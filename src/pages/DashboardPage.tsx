@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { supabase } from '../lib/supabase'
 import { fetchOptimizedDashboardData, performanceMonitor, cacheUtils } from '../lib/optimizedQueries'
 import { AdvancedCalendar } from '../components/Calendar/AdvancedCalendar'
-import { EventModal } from '../components/EventModal'
+import { CustomEventModal } from '../components/EventModal/CustomEventModal'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { FamilyManagement } from '../components/FamilyManagement'
@@ -361,15 +361,16 @@ export const DashboardPage = () => {
       </main>
 
       {/* Event Modal */}
-      <EventModal
-        isOpen={showEventModal}
-        onClose={handleEventModalClose}
-        onSave={handleEventSave}
-        event={eventModalData}
-        familyMembers={familyMembers}
-        familyId={userProfile?.family_id}
-        userId={user?.id}
-      />
+      <CustomEventModal
+  isOpen={false}
+  onClose={() => {}}
+  onSave={() => {}}
+  onDelete={() => {}}
+  event={{}}
+  familyMembers={[]}
+  familyId=""
+  userId=""
+/>
 
       {/* Family Management Modal */}
       {userProfile?.role === 'admin' && (
