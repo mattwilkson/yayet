@@ -1,8 +1,6 @@
 // File: src/pages/DashboardPage.tsx
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { supabase } from '../lib/supabase'
 import { fetchOptimizedDashboardData, performanceMonitor, cacheUtils } from '../lib/optimizedQueries'
 import { AdvancedCalendar } from '../components/Calendar/AdvancedCalendar'
 import { CustomEventModal } from '../components/EventModal/CustomEventModal'
@@ -11,20 +9,10 @@ import { Modal } from '../components/ui/Modal'
 import { FamilyManagement } from '../components/FamilyManagement'
 import { UserMenu } from '../components/UserMenu'
 import { generateICalendar, downloadFile } from '../lib/utils'
-import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns'
-import { 
-  Calendar as CalendarIcon, 
-  Plus, 
-  Users, 
-  Download, 
-  User,
-  Eye,
-  EyeOff,
-  RefreshCw
-} from 'lucide-react'
+import { Calendar as CalendarIcon, Plus, Users, Download, User, Eye, EyeOff, RefreshCw } from 'lucide-react'
 
 export const DashboardPage: React.FC = () => {
-  const { user, userProfile, signOut } = useAuth()
+  const { user, userProfile } = useAuth()
   const [events, setEvents] = useState<any[]>([])
   const [familyMembers, setFamilyMembers] = useState<any[]>([])
   const [familyInfo, setFamilyInfo] = useState<any>(null)
@@ -73,33 +61,26 @@ export const DashboardPage: React.FC = () => {
     setNewEventData(null)
     setShowEventModal(true)
   }
-
   const handleCreateEvent = (startTime: Date, endTime: Date) => {
     setSelectedEvent(null)
     setNewEventData({ startTime, endTime })
     setShowEventModal(true)
   }
-
   const handleEventModalClose = () => {
     setShowEventModal(false)
     setSelectedEvent(null)
     setNewEventData(null)
   }
-
   const handleEventSave = async () => {
-    // After save, refresh data & close modal
     cacheUtils.clearFamily(userProfile!.family_id)
     await fetchData()
     handleEventModalClose()
   }
-
   const handleEventDelete = async () => {
-    // After delete, refresh data & close modal
     cacheUtils.clearFamily(userProfile!.family_id)
     await fetchData()
     handleEventModalClose()
   }
-
   const handleExportCalendar = () => {
     const eventsToExport = events.filter(e => !e.isHoliday && !e.isSpecialEvent)
     const ical = generateICalendar(eventsToExport)
@@ -107,7 +88,6 @@ export const DashboardPage: React.FC = () => {
     const filename = `${famName}_${viewMode === 'personal' ? 'personal' : 'family'}_calendar.ics`
     downloadFile(ical, filename, 'text/calendar')
   }
-
   const handleRefreshData = async () => {
     cacheUtils.clearFamily(userProfile!.family_id)
     await fetchData()
@@ -115,9 +95,7 @@ export const DashboardPage: React.FC = () => {
 
   // REFETCH WHEN DATE CHANGES
   useEffect(() => {
-    if (userProfile?.family_id) {
-      fetchData()
-    }
+    if (userProfile?.family_id) fetchData()
   }, [currentDate])
 
   // LOADING STATE
@@ -136,25 +114,33 @@ export const DashboardPage: React.FC = () => {
   const familyName = familyInfo?.family_name || 'Family'
 
   // PREPARE eventModalData
-  const eventModalData = selectedEvent
-    ? selectedEvent
-    : newEventData
-      ? {
-          title: '',
-          description: '',
-          start_time: newEventData.startTime.toISOString(),
-          end_time: newEventData.endTime.toISOString(),
-          all_day: false,
-          location: ''
-        }
-      : {
-          title: '',
-          description: '',
-          start_time: new Date(currentDate).setHours(9,0,0,0) && new Date(currentDate).toISOString(),
-          end_time: new Date(currentDate).setHours(10,0,0,0) && new Date(currentDate).toISOString(),
-          all_day: false,
-          location: ''
-        }
+  let eventModalData: any
+  if (selectedEvent) {
+    eventModalData = selectedEvent
+  } else if (newEventData) {
+    eventModalData = {
+      title: '',
+      description: '',
+      start_time: newEventData.startTime.toISOString(),
+      end_time: newEventData.endTime.toISOString(),
+      all_day: false,
+      location: ''
+    }
+  } else {
+    // default 9–10 AM on currentDate
+    const defaultStart = new Date(currentDate)
+    defaultStart.setHours(9, 0, 0, 0)
+    const defaultEnd = new Date(defaultStart)
+    defaultEnd.setHours(10, 0, 0, 0)
+    eventModalData = {
+      title: '',
+      description: '',
+      start_time: defaultStart.toISOString(),
+      end_time: defaultEnd.toISOString(),
+      all_day: false,
+      location: ''
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -179,8 +165,7 @@ export const DashboardPage: React.FC = () => {
                     viewMode === 'personal'
                       ? 'bg-white text-blue-700 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
+                  }`}>
                   <User className="h-4 w-4 mr-1" /> My Events
                 </button>
                 <button
@@ -189,8 +174,7 @@ export const DashboardPage: React.FC = () => {
                     viewMode === 'full'
                       ? 'bg-white text-blue-700 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
+                  }`}>
                   <Users className="h-4 w-4 mr-1" /> Full Family
                 </button>
               </div>
@@ -206,8 +190,7 @@ export const DashboardPage: React.FC = () => {
                   setSelectedEvent(null)
                   setNewEventData(null)
                   setShowEventModal(true)
-                }}
-              >
+                }}>
                 <Plus className="h-4 w-4 mr-2" /> New Event
               </Button>
               {userProfile?.role === 'admin' && (
