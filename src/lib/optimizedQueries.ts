@@ -1,9 +1,28 @@
 // File: src/lib/optimizedQueries.ts
 import { startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { supabase } from './supabase'
-import { performanceMonitor } from './optimizedQueries'  // adjust your imports as needed
 
-const fetchOptimizedEvents = async (
+// PERFORMANCE MONITORING (defined once at top)
+export const performanceMonitor = {
+  startTimer: (operation: string) => {
+    const start = performance.now()
+    return {
+      end: () => {
+        const duration = performance.now() - start
+        console.log(`⏱️ ${operation} took ${duration.toFixed(2)}ms`)
+        if (duration > 1000) {
+          console.warn(`🐌 Slow operation detected: ${operation} (${duration.toFixed(2)}ms)`)
+        }
+        return duration
+      }
+    }
+  }
+}
+
+// … your QueryCache and fetchOptimizedDashboardData & helpers go here …
+
+// Optimized event fetching with assignment + color enrichment
+export const fetchOptimizedEvents = async (
   familyId: string,
   currentDate: Date,
   viewMode: 'full' | 'personal' = 'full',
@@ -11,13 +30,11 @@ const fetchOptimizedEvents = async (
 ) => {
   const timer = performanceMonitor.startTimer('fetchOptimizedEvents')
 
-  // 1) get your date window
   const weekStart  = startOfWeek(currentDate)
   const rangeStart = subWeeks(weekStart, 2)
   const rangeEnd   = addWeeks(weekStart, 4)
 
   try {
-    // 2) load recurring / holidays / special events
     const { recurringEventManager } = await import('./recurringEventManager')
     let familyEvents = await recurringEventManager.getEventsForDateRange(
       familyId,
@@ -25,7 +42,6 @@ const fetchOptimizedEvents = async (
       rangeEnd
     )
 
-    // 3) filter for “personal” view
     if (viewMode === 'personal' && userId) {
       const { data: userMember } = await supabase
         .from('family_members')
@@ -42,20 +58,18 @@ const fetchOptimizedEvents = async (
       }
     }
 
-    // 4) load holidays & special
     const [holidays, specialEvents] = await Promise.all([
       fetchOptimizedHolidays(rangeStart, rangeEnd),
       fetchOptimizedSpecialEvents(familyId, rangeStart, rangeEnd)
     ])
 
     const allEvents = [...familyEvents, ...holidays, ...specialEvents]
-
-    if (allEvents.length === 0) {
+    if (!allEvents.length) {
       timer.end()
       return []
     }
 
-    // 5) batch‐fetch *all* assignments for those events in one go:
+    // 1 batch fetch of all assignments + member color
     const eventIds = allEvents.map(e => e.id)
     const { data: assignments = [], error: assignErr } = await supabase
       .from('event_assignments')
@@ -69,13 +83,11 @@ const fetchOptimizedEvents = async (
 
     if (assignErr) throw assignErr
 
-    // 6) group by event_id
-    const assignmentMap = assignments.reduce((map, a) => {
+    const assignmentMap = assignments.reduce<Record<string, any[]>>((map, a) => {
       (map[a.event_id] ||= []).push(a)
       return map
-    }, {} as Record<string, typeof assignments>)
+    }, {})
 
-    // 7) attach assignments + pick a “calendar color” from the primary member
     const eventsWithAssignments = allEvents.map(e => {
       const assigns = assignmentMap[e.id] || []
       const primary = assigns.find(a => !a.is_driver_helper)?.family_members
@@ -93,3 +105,5 @@ const fetchOptimizedEvents = async (
     throw err
   }
 }
+
+// … rest of your optimizedQueries.ts (fetchOptimizedHolidays, specialEvents, cache, etc.) …
