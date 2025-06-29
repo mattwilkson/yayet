@@ -3,7 +3,7 @@ import { startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { supabase } from './supabase'
 
 // ————————————————————————————————————————
-// Simple in-memory cache for queries
+// Simple in-memory cache
 // ————————————————————————————————————————
 interface CacheEntry<T> {
   data: T
@@ -52,8 +52,8 @@ export const performanceMonitor = {
 export const cacheUtils = {
   clearAll: () => { queryCache.clear(); console.log('🗑️ cleared all cache') },
   clearFamily: (familyId: string) => {
-    for (const key of Array.from(queryCache['cache'].keys())) {
-      if (key.includes(familyId)) queryCache['cache'].delete(key)
+    for (const key of Array.from((queryCache as any).cache.keys())) {
+      if (key.includes(familyId)) (queryCache as any).cache.delete(key)
     }
     console.log(`🗑️ cleared cache for family ${familyId}`)
   },
@@ -64,7 +64,6 @@ export const cacheUtils = {
 // Helpers
 // ————————————————————————————————————————
 function extractParentEventId(eventId: string): string {
-  // Standard UUID has 5 parts; anything extra is a "-YYYY-MM-DD" suffix
   const parts = eventId.split('-')
   return parts.length > 5 ? parts.slice(0, 5).join('-') : eventId
 }
@@ -83,20 +82,61 @@ async function fetchOptimizedFamilyInfo(familyId: string) {
     .eq('id', familyId)
     .single()
   if (error) throw error
+
   queryCache.set(key, data, 10 * 60 * 1000)
   return data
 }
 
 // ————————————————————————————————————————
-// Fetch Holidays & Specials (placeholders; implement in ./holidays & ./specialEvents)
+// Holidays & Special Events
 // ————————————————————————————————————————
 async function fetchOptimizedHolidays(start: Date, end: Date) {
-  // your existing caching + fetch logic...
-  return []
+  const monthKey = `${start.getFullYear()}-${start.getMonth()}`
+  const cacheKey = `holidays-${monthKey}`
+  const cached = queryCache.get<any[]>(cacheKey)
+  if (cached) {
+    return cached.filter(h => {
+      const d = new Date(h.start_time)
+      return d >= start && d <= end
+    })
+  }
+
+  // dynamically import your existing holiday fetchers
+  const { fetchHolidays, convertHolidaysToEvents } = await import('./holidays')
+  const raw = await fetchHolidays(
+    new Date(start.getFullYear(), start.getMonth(), 1),
+    new Date(start.getFullYear(), start.getMonth() + 1, 0)
+  )
+  const events = convertHolidaysToEvents(raw)
+  queryCache.set(cacheKey, events, 24 * 60 * 60 * 1000)
+  return events.filter(h => {
+    const d = new Date(h.start_time)
+    return d >= start && d <= end
+  })
 }
+
 async function fetchOptimizedSpecialEvents(familyId: string, start: Date, end: Date) {
-  // your existing logic...
-  return []
+  const monthKey = `${start.getFullYear()}-${start.getMonth()}`
+  const cacheKey = `special-events-${familyId}-${monthKey}`
+  const cached = queryCache.get<any[]>(cacheKey)
+  if (cached) {
+    return cached.filter(e => {
+      const d = new Date(e.start_time)
+      return d >= start && d <= end
+    })
+  }
+
+  const { generateSpecialEvents } = await import('./specialEvents')
+  const events = await generateSpecialEvents(
+    familyId,
+    new Date(start.getFullYear(), start.getMonth(), 1),
+    new Date(start.getFullYear(), start.getMonth() + 1, 0)
+  )
+  queryCache.set(cacheKey, events, 60 * 60 * 1000)
+  return events.filter(e => {
+    const d = new Date(e.start_time)
+    return d >= start && d <= end
+  })
 }
 
 // ————————————————————————————————————————
@@ -113,12 +153,13 @@ async function fetchOptimizedFamilyMembers(familyId: string) {
     .eq('family_id', familyId)
     .order('name')
   if (error) throw error
+
   queryCache.set(key, data || [], 5 * 60 * 1000)
   return data || []
 }
 
 // ————————————————————————————————————————
-// Events + Assignments
+// Fetch Events + Assignments
 // ————————————————————————————————————————
 export async function fetchOptimizedEvents(
   familyId: string,
@@ -128,7 +169,7 @@ export async function fetchOptimizedEvents(
 ) {
   const t = performanceMonitor.startTimer('fetchOptimizedEvents')
 
-  // 1) load recurring series + exceptions
+  // 1) recurring + exceptions
   const { recurringEventManager } = await import('./recurringEventManager')
   const weekStart  = startOfWeek(currentDate)
   const rangeStart = subWeeks(weekStart, 2)
@@ -137,10 +178,14 @@ export async function fetchOptimizedEvents(
 
   // 2) personal filter
   if (viewMode === 'personal' && userId) {
-    const { data: me } = await supabase.from('family_members').select('id').eq('user_id', userId).maybeSingle()
+    const { data: me } = await supabase
+      .from('family_members')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle()
     events = me
       ? events.filter(e =>
-          e.event_assignments?.some((a:any) => a.family_member_id === me.id)
+          e.event_assignments?.some((a: any) => a.family_member_id === me.id)
         )
       : []
   }
@@ -152,40 +197,26 @@ export async function fetchOptimizedEvents(
   ])
   events = [...events, ...hols, ...specs]
 
-  // 4) if no events bail early
-  if (!events.length) {
-    t.end()
-    return []
-  }
-
-  // 5) collect *parent* IDs for assignments
+  // 4) assignments—batch fetch by parent‐IDs
   const parentIds = Array.from(new Set(events.map(e => extractParentEventId(e.id))))
-
-  // 6) fetch assignments in one go
   const { data: assigns = [], error: ae } = await supabase
     .from('event_assignments')
-    .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
+    .select('event_id, is_driver_helper, family_member_id, family_members(id,color)')
     .in('event_id', parentIds)
   if (ae) throw ae
 
-  // 7) group them by parent
+  // 5) group and reattach + pick primary color
   const groups: Record<string, typeof assigns> = {}
   assigns.forEach(a => {
     const pid = a.event_id
-    groups[pid] = groups[pid] || []
+    groups[pid] ||= []
     groups[pid].push(a)
   })
-
-  // 8) re-attach + pick a primary color
   const out = events.map(e => {
     const pid = extractParentEventId(e.id)
     const evAs = groups[pid] || []
     const primary = evAs.find(a => !a.is_driver_helper)?.family_members
-    return {
-      ...e,
-      event_assignments: evAs,
-      color: primary?.color ?? '#888'
-    }
+    return { ...e, event_assignments: evAs, color: primary?.color ?? '#888' }
   })
 
   t.end()
