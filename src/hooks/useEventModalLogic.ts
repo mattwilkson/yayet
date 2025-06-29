@@ -16,8 +16,8 @@ export interface UseEventModalLogicProps {
   familyId: string
   userId: string
   onClose: () => void
-  onSave: () => void
-  onDelete: () => void
+  onSave: () => void      // page-level callback
+  onDelete: () => void    // page-level callback
 }
 
 export function useEventModalLogic({
@@ -128,14 +128,12 @@ export function useEventModalLogic({
     setDriveTime('')
   }, [isOpen, event])
 
-  // ----- QoL #1: endDate follows startDate -----
+  // QoL #1: endDate follows startDate
   useEffect(() => {
-    if (startDate) {
-      setEndDate(startDate)
-    }
+    if (startDate) setEndDate(startDate)
   }, [startDate])
 
-  // ----- QoL #2: endTime moves one hour after startTime -----
+  // QoL #2: endTime moves one hour after startTime
   useEffect(() => {
     const dt = new Date(`${startDate}T${startTime}`)
     if (isValid(dt)) {
@@ -145,7 +143,7 @@ export function useEventModalLogic({
     }
   }, [startTime, startDate])
 
-  // default day for weekly recurrence
+  // default weekly day
   useEffect(() => {
     if (recurrenceType==='weekly' && selectedDays.length===0) {
       const dt = new Date(`${startDate}T${startTime}`)
@@ -156,13 +154,13 @@ export function useEventModalLogic({
     }
   }, [recurrenceType, startDate, startTime])
 
-  // ----- handlers -----
+  // ----- toggle helpers -----
   const toggleRecurringOptions  = () => setShowRecurringOptions(x => !x)
   const toggleAdditionalOptions = () => setShowAdditionalOptions(x => !x)
   const handleDayToggle         = (d: string) =>
     setSelectedDays(xs => xs.includes(d) ? xs.filter(x=>x!==d) : [...xs,d])
 
-  // ----- assignment CRUD -----
+  // ----- assignment helpers -----
   async function createEventAssignments(eid:string, members:string[], driver?:string) {
     if (members.length) {
       const payload = members.map(id=>({ event_id: eid, family_member_id: id, is_driver_helper: false }))
@@ -204,6 +202,7 @@ export function useEventModalLogic({
         family_id: familyId,
         created_by_user_id: userId
       }
+
       let rule:any = null
       if (recurrenceType!=='none' && !isRecurringInstance) {
         rule = { type: recurrenceType, interval: recurrenceInterval }
@@ -245,7 +244,7 @@ export function useEventModalLogic({
         }
       }
 
-      // only call onSave — the page will both refresh & close
+      // now call your page-level onSave which will re-fetch & close
       onSave()
     } catch (err:any) {
       setError(err.message || 'Save failed')
@@ -266,7 +265,6 @@ export function useEventModalLogic({
       } else {
         await supabase.from('events').delete().eq('id', pid)
       }
-
       onDelete()
     } catch (err:any) {
       setError(err.message || 'Delete failed')
@@ -297,12 +295,19 @@ export function useEventModalLogic({
       .map(d=>d.charAt(0).toUpperCase()+d.slice(1)).join(', ')
 
   return {
+    // modal control
     isOpen,
     onClose,
-    handleSave,
-    handleDelete,
+
+    // wire these to EventModalUI
+    onSave: handleSave,
+    onDelete: handleDelete,
+
+    // status
     loading,
     error,
+
+    // basic fields
     title, setTitle,
     description, setDescription,
     startDate, setStartDate,
@@ -311,8 +316,12 @@ export function useEventModalLogic({
     endTime, setEndTime,
     allDay, setAllDay,
     location, setLocation,
+
+    // assignments
     assignedMembers, setAssignedMembers,
     driverHelper, setDriverHelper,
+
+    // recurrence
     showRecurringOptions, toggleRecurringOptions,
     recurrenceType, setRecurrenceType,
     recurrenceInterval, setRecurrenceInterval,
@@ -320,13 +329,17 @@ export function useEventModalLogic({
     recurrenceEndCount, setRecurrenceEndCount,
     recurrenceEndType, setRecurrenceEndType,
     selectedDays, handleDayToggle,
+
+    // extras
     showAdditionalOptions, toggleAdditionalOptions,
     arrivalTime, setArrivalTime,
     driveTime, setDriveTime,
-    isEditing,
-    isRecurringParent,
-    isRecurringInstance,
+
+    // flags
+    isEditing, isRecurringParent, isRecurringInstance,
     editMode, setEditMode,
+
+    // computed lists & utils
     assignableFamilyMembers,
     driverHelperFamilyMembers,
     getDisplayName,
