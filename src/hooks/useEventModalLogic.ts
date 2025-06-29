@@ -93,7 +93,9 @@ export function useEventModalLogic({
 
     // assignments
     const assigns = event.event_assignments || []
-    setAssignedMembers(assigns.filter((a:any)=>!a.is_driver_helper).map((a:any)=>a.family_member_id))
+    setAssignedMembers(
+      assigns.filter((a:any)=>!a.is_driver_helper).map((a:any)=>a.family_member_id)
+    )
     const driver = assigns.find((a:any)=>a.is_driver_helper)
     setDriverHelper(driver?.family_member_id || '')
 
@@ -133,7 +135,9 @@ export function useEventModalLogic({
     if (recurrenceType==='weekly' && selectedDays.length===0) {
       const dt = new Date(`${startDate}T${startTime}`)
       if (isValid(dt)) {
-        const dow = dt.toLocaleDateString('en-us',{ weekday:'long' }).toLowerCase()
+        const dow = dt
+          .toLocaleDateString('en-us', { weekday:'long' })
+          .toLowerCase()
         setSelectedDays([dow])
       }
     }
@@ -145,10 +149,14 @@ export function useEventModalLogic({
   const handleDayToggle         = (d: string) =>
     setSelectedDays(xs => xs.includes(d) ? xs.filter(x=>x!==d) : [...xs,d])
 
-  // ----- assignment helpers -----
+  // ----- assignments helpers -----
   async function createEventAssignments(eid:string, members:string[], driver?:string) {
     if (members.length) {
-      const payload = members.map(id=>({ event_id: eid, family_member_id: id, is_driver_helper: false }))
+      const payload = members.map(id=>({
+        event_id: eid,
+        family_member_id: id,
+        is_driver_helper: false
+      }))
       const { error } = await supabase.from('event_assignments').insert(payload)
       if (error) throw error
     }
@@ -174,11 +182,13 @@ export function useEventModalLogic({
             ed = new Date(`${endDate}T${endTime}`)
       if (!isValid(sd)||!isValid(ed)) throw new Error('Invalid date/time')
       if (ed<sd) throw new Error('End must be after start')
-      if (recurrenceType==='weekly' && selectedDays.length===0) throw new Error('Select at least one day')
+      if (recurrenceType==='weekly' && selectedDays.length===0)
+        throw new Error('Select at least one day')
 
       // build payload
       const data: any = {
-        title, description: description||null,
+        title,
+        description: description||null,
         start_time: sd.toISOString(),
         end_time: ed.toISOString(),
         all_day: allDay,
@@ -204,23 +214,29 @@ export function useEventModalLogic({
             .update({ ...data, recurrence_rule: rule?JSON.stringify(rule):null })
             .eq('id', pid)
           await updateEventAssignments(pid, assignedMembers, driverHelper)
-        }
-        else if (isRecurringInstance && editMode==='single') {
+
+        } else if (isRecurringInstance && editMode==='single') {
           await supabase.from('events').update(data).eq('id', event.id)
           await updateEventAssignments(event.id, assignedMembers, driverHelper)
-        }
-        else {
+
+        } else {
           await supabase.from('events').update(data).eq('id', pid)
           await updateEventAssignments(pid, assignedMembers, driverHelper)
         }
+
       } else {
         if (recurrenceType!=='none') {
           const { data: parent, error } = await supabase
             .from('events')
-            .insert({ ...data, recurrence_rule: JSON.stringify(rule), is_recurring_parent: true })
+            .insert({
+              ...data,
+              recurrence_rule: JSON.stringify(rule),
+              is_recurring_parent: true
+            })
             .select().single()
           if (error) throw error
           await createEventAssignments(parent.id, assignedMembers, driverHelper)
+
         } else {
           const { data: single, error } = await supabase
             .from('events')
@@ -231,6 +247,7 @@ export function useEventModalLogic({
         }
       }
 
+      // 👇 fire the parent onSave callback
       onSave()
     } catch (err:any) {
       setError(err.message||'Save failed')
@@ -253,6 +270,7 @@ export function useEventModalLogic({
       else {
         await supabase.from('events').delete().eq('id', pid)
       }
+      // 👇 fire the parent onDelete callback
       onDelete()
     } catch (err:any) {
       setError(err.message||'Delete failed')
@@ -278,8 +296,11 @@ export function useEventModalLogic({
   const getDayLetter = (d:string) => dayMap[d]||d.charAt(0).toUpperCase()
   const getSelectedDaysSummary = () =>
     selectedDays
-      .sort((a,b)=>['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].indexOf(a)
-               -['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].indexOf(b))
+      .slice()
+      .sort((a,b)=>
+        ['sunday','monday','tuesday','wednesday','thursday','friday','saturday']
+          .indexOf(a) - ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].indexOf(b)
+      )
       .map(d=>d.charAt(0).toUpperCase()+d.slice(1))
       .join(', ')
 
@@ -288,9 +309,9 @@ export function useEventModalLogic({
     isOpen,
     onClose,
 
-    // save/delete
-    handleSave,
-    handleDelete,
+    // expose under the names UI expects:
+    onSave:   handleSave,
+    onDelete: handleDelete,
 
     // status
     loading,
@@ -318,8 +339,7 @@ export function useEventModalLogic({
     recurrenceEndDate, setRecurrenceEndDate,
     recurrenceEndCount, setRecurrenceEndCount,
     recurrenceEndType, setRecurrenceEndType,
-    selectedDays,
-    handleDayToggle,
+    selectedDays, handleDayToggle,
 
     // extras
     showAdditionalOptions,
@@ -333,7 +353,7 @@ export function useEventModalLogic({
     isRecurringInstance,
     editMode, setEditMode,
 
-    // computed lists & helpers
+    // helpers
     assignableFamilyMembers,
     driverHelperFamilyMembers,
     getDisplayName,
