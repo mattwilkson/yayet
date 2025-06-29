@@ -2,26 +2,40 @@
 import React from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { Modal } from './ui/Modal'
+import { Spinner } from './ui/Spinner'  // or any spinner component you have
 
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, userProfile, loading: profileLoading } = useAuth()
+interface ProtectedRouteProps {
+  children: React.ReactNode
+}
+
+export function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { user, userProfile, loading: authLoading } = useAuth()
   const location = useLocation()
 
-  // 1️⃣ Wait until we know if userProfile is loaded
-  if (profileLoading) {
-    return null   // or a spinner
+  // 1. While our Auth hook is fetching user & profile, show a spinner:
+  if (authLoading) {
+    return (
+      <Modal isOpen={true} title="Loading…" size="sm">
+        <div className="flex items-center justify-center p-6">
+          <Spinner /> {/* or fallback text: <p>Loading…</p> */}
+        </div>
+      </Modal>
+    )
   }
 
-  // 2️⃣ If not logged in, send to login
+  // 2. If not logged in, send to `/login`, preserving the attempted path:
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  // 3️⃣ If logged in but never onboarded, send to onboarding
-  if (userProfile && !userProfile.onboarded) {
+  // 3. If logged in but not yet onboarded, send to `/onboarding`:
+  //    After they finish onboarding, set userProfile.onboarded=true and
+  //    they’ll come back here and hit the dashboard.
+  if (userProfile && userProfile.onboarded === false) {
     return <Navigate to="/onboarding" replace />
   }
 
-  // 4️⃣ Otherwise, render the requested page
+  // 4. Otherwise, render the protected content:
   return <>{children}</>
 }
