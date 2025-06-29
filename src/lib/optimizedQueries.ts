@@ -35,7 +35,7 @@ class QueryCache {
   }
 
   size() {
-    return this.cache.size()
+    return this.cache.size
   }
 }
 
@@ -77,7 +77,7 @@ export const cacheUtils = {
     console.log(`🗑️ cleared cache for family ${familyId}`)
   },
   stats: () => ({
-    entries: queryCache.size()
+    entries: queryCache.size
   })
 }
 
