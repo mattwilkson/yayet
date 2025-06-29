@@ -1,10 +1,9 @@
-// File: src/hooks/useAuth.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 interface AuthContextValue {
   user: User | null
-  userProfile: Profile | null | undefined  // undefined = “still loading”
+  userProfile: Profile | null | undefined  // undefined = "still loading"
   authLoading: boolean
   profileLoading: boolean
   signOut: () => Promise<void>
@@ -41,8 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setProfileLoading(true)
     supabase
-      .from('profiles')
-      .select('*')
+      .from('users')
+      .select('id,family_id,role')
       .eq('id', user.id)
       .single()
       .then(({ data, error }) => {
