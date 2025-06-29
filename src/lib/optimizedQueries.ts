@@ -60,7 +60,7 @@ class QueryCache {
 const queryCache = new QueryCache()
 
 // ————————————————————————————————
-// DASHBOARD DATA (familyInfo, events, members)
+// DASHBOARD DATA
 // ————————————————————————————————
 export const fetchOptimizedDashboardData = async (
   familyId: string,
@@ -86,7 +86,7 @@ export const fetchOptimizedDashboardData = async (
   ])
 
   const result = { familyInfo, events, familyMembers, timestamp: Date.now() }
-  queryCache.set(cacheKey, result, 3 * 60 * 1000) // 3m TTL
+  queryCache.set(cacheKey, result, 3 * 60 * 1000)
   timer.end()
   return result
 }
@@ -106,7 +106,7 @@ const fetchOptimizedFamilyInfo = async (familyId: string) => {
     .single()
   if (error) throw error
 
-  queryCache.set(cacheKey, data, 10 * 60 * 1000) // 10m TTL
+  queryCache.set(cacheKey, data, 10 * 60 * 1000)
   return data
 }
 
@@ -125,7 +125,7 @@ const fetchOptimizedFamilyMembers = async (familyId: string) => {
     .order('name')
   if (error) throw error
 
-  queryCache.set(cacheKey, data||[], 5 * 60 * 1000) // 5m TTL
+  queryCache.set(cacheKey, data||[], 5 * 60 * 1000)
   return data || []
 }
 
@@ -149,8 +149,7 @@ const fetchOptimizedHolidays = async (startDate: Date, endDate: Date) => {
     new Date(startDate.getFullYear(), startDate.getMonth()+1, 0)
   )
   const evs = convertHolidaysToEvents(raw)
-  queryCache.set(cacheKey, evs, 24 * 60 * 60 * 1000) // 24h TTL
-
+  queryCache.set(cacheKey, evs, 24 * 60 * 60 * 1000)
   return evs.filter(h => {
     const d = new Date(h.start_time)
     return d >= startDate && d <= endDate
@@ -172,12 +171,12 @@ const fetchOptimizedSpecialEvents = async (familyId: string, startDate: Date, en
   }
 
   const { generateSpecialEvents } = await import('./specialEvents')
-  const evs = await generateSpecialEvents(familyId,
+  const evs = await generateSpecialEvents(
+    familyId,
     new Date(startDate.getFullYear(), startDate.getMonth(), 1),
     new Date(startDate.getFullYear(), startDate.getMonth()+1, 0)
   )
-  queryCache.set(cacheKey, evs, 60 * 60 * 1000) // 1h TTL
-
+  queryCache.set(cacheKey, evs, 60 * 60 * 1000)
   return evs.filter(e => {
     const d = new Date(e.start_time)
     return d >= startDate && d <= endDate
@@ -185,7 +184,7 @@ const fetchOptimizedSpecialEvents = async (familyId: string, startDate: Date, en
 }
 
 // ————————————————————————————————
-// EVENTS (+ ASSIGNMENTS + COLOR)
+// EVENTS (with color & assignments)
 // ————————————————————————————————
 export const fetchOptimizedEvents = async (
   familyId: string,
@@ -194,45 +193,32 @@ export const fetchOptimizedEvents = async (
   userId?: string
 ) => {
   const timer = performanceMonitor.startTimer('fetchOptimizedEvents')
-
   const weekStart  = startOfWeek(currentDate)
   const rangeStart = subWeeks(weekStart, 2)
   const rangeEnd   = addWeeks(weekStart, 4)
 
-  // 1) get recurring & single events
   const { recurringEventManager } = await import('./recurringEventManager')
   let evs = await recurringEventManager.getEventsForDateRange(familyId, rangeStart, rangeEnd)
 
-  // 2) personal filter
   if (viewMode === 'personal' && userId) {
     const { data: member } = await supabase
       .from('family_members')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle()
-
-    if (member) {
-      evs = evs.filter(e =>
-        e.event_assignments?.some((a: any) => a.family_member_id === member.id)
-      )
-    } else {
-      evs = []
-    }
+    evs = member
+      ? evs.filter(e => e.event_assignments?.some((a: any) => a.family_member_id === member.id))
+      : []
   }
 
-  // 3) holidays & special
   const [hol, spec] = await Promise.all([
     fetchOptimizedHolidays(rangeStart, rangeEnd),
     fetchOptimizedSpecialEvents(familyId, rangeStart, rangeEnd)
   ])
   const allEvents = [...evs, ...hol, ...spec]
+  if (!allEvents.length) { timer.end(); return [] }
 
-  if (!allEvents.length) {
-    timer.end()
-    return []
-  }
-
-  // 4) batch-fetch all assignments + join member color
+  // fetch assignments + colors
   const ids = allEvents.map(e => e.id)
   const { data: assigns = [], error: ae } = await supabase
     .from('event_assignments')
@@ -248,11 +234,7 @@ export const fetchOptimizedEvents = async (
   const final = allEvents.map(e => {
     const ass = map[e.id] || []
     const primary = ass.find(a => !a.is_driver_helper)?.family_members
-    return {
-      ...e,
-      event_assignments: ass,
-      color: primary?.color ?? '#999'
-    }
+    return { ...e, event_assignments: ass, color: primary?.color ?? '#999' }
   })
 
   timer.end()
@@ -274,7 +256,5 @@ export const cacheUtils = {
       .forEach(k => queryCache.get(k) && queryCache.clear())
     console.log(`🗑️ Cleared cache for family ${familyId}`)
   },
-  stats: () => ({
-    entries: queryCache.size()
-  })
+  stats: () => ({ entries: queryCache.size() })
 }
