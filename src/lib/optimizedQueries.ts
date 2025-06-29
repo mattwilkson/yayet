@@ -11,7 +11,6 @@ interface CacheEntry<T> {
   timestamp: number
   ttl: number
 }
-
 class QueryCache {
   private cache = new Map<string, CacheEntry<any>>()
   private readonly DEFAULT_TTL = 5 * 60 * 1000
@@ -34,6 +33,7 @@ class QueryCache {
     this.cache.clear()
   }
 
+  // ⚠️ Use the Map’s size property, not a method
   size() {
     return this.cache.size
   }
@@ -59,7 +59,7 @@ export const performanceMonitor = {
 }
 
 // ————————————————————————————————————————
-// Cache utils
+// Cache utilities
 // ————————————————————————————————————————
 export const cacheUtils = {
   clearAll: () => {
@@ -67,7 +67,7 @@ export const cacheUtils = {
     console.log('🗑️ cleared all cache')
   },
   clearFamily: (familyId: string) => {
-    // @ts-ignore: access private Map
+    // @ts-ignore: digging into the private map
     for (const key of Array.from((queryCache as any).cache.keys())) {
       if (key.includes(familyId)) {
         // @ts-ignore
@@ -77,7 +77,7 @@ export const cacheUtils = {
     console.log(`🗑️ cleared cache for family ${familyId}`)
   },
   stats: () => ({
-    entries: queryCache.size
+    entries: queryCache.size()    // ✔️ property, not function
   })
 }
 
@@ -90,7 +90,7 @@ function extractParentEventId(eventId: string): string {
 }
 
 // ————————————————————————————————————————
-// Fetch family info
+// Family Info
 // ————————————————————————————————————————
 async function fetchOptimizedFamilyInfo(familyId: string) {
   const key = `family-info-${familyId}`
@@ -109,7 +109,7 @@ async function fetchOptimizedFamilyInfo(familyId: string) {
 }
 
 // ————————————————————————————————————————
-// Fetch family members
+// Family Members
 // ————————————————————————————————————————
 async function fetchOptimizedFamilyMembers(familyId: string) {
   const key = `family-members-${familyId}`
@@ -130,10 +130,10 @@ async function fetchOptimizedFamilyMembers(familyId: string) {
 }
 
 // ————————————————————————————————————————
-// Placeholder holidays & specials
+// Placeholder for holidays & special events
 // ————————————————————————————————————————
 async function fetchOptimizedHolidays(start: Date, end: Date) {
-  // implement or import your ./holidays logic here…
+  // TODO: import & implement your ./holidays logic
   return []
 }
 
@@ -142,12 +142,12 @@ async function fetchOptimizedSpecialEvents(
   start: Date,
   end: Date
 ) {
-  // implement or import your ./specialEvents logic here…
+  // TODO: import & implement your ./specialEvents logic
   return []
 }
 
 // ————————————————————————————————————————
-// Fetch events (recurring + assignments)
+// Fetch events (including recurring + assignments)
 // ————————————————————————————————————————
 export async function fetchOptimizedEvents(
   familyId: string,
@@ -162,47 +162,46 @@ export async function fetchOptimizedEvents(
   const weekStart = startOfWeek(currentDate)
   const rangeStart = subWeeks(weekStart, 2)
   const rangeEnd = addWeeks(weekStart, 4)
+
   let events = await recurringEventManager.getEventsForDateRange(
     familyId,
     rangeStart,
     rangeEnd
   )
 
-  // 2) personal view filter
+  // 2) personal filter
   if (viewMode === 'personal' && userId) {
     const { data: me } = await supabase
       .from('family_members')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle()
-    if (me) {
-      events = events.filter(e =>
-        e.event_assignments?.some((a: any) => a.family_member_id === me.id)
-      )
-    } else {
-      events = []
-    }
+
+    events = me
+      ? events.filter(e =>
+          e.event_assignments?.some((a: any) => a.family_member_id === me.id)
+        )
+      : []
   }
 
-  // 3) holidays & specials
+  // 3) holidays + specials
   const [hols, specs] = await Promise.all([
     fetchOptimizedHolidays(rangeStart, rangeEnd),
     fetchOptimizedSpecialEvents(familyId, rangeStart, rangeEnd)
   ])
   events = [...events, ...hols, ...specs]
 
-  // if no events, return early
   if (!events.length) {
     t.end()
     return []
   }
 
-  // 4) collect parent IDs for assignments
+  // 4) pull out parent IDs for batch‐assignment fetch
   const parentIds = Array.from(
     new Set(events.map(e => extractParentEventId(e.id)))
   )
 
-  // 5) fetch all assignments in one go
+  // 5) fetch all event_assignments in one go
   const { data: assigns = [], error: ae } = await supabase
     .from('event_assignments')
     .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
@@ -210,7 +209,7 @@ export async function fetchOptimizedEvents(
 
   if (ae) throw ae
 
-  // 6) group by parent
+  // 6) group by parent_id
   const groups: Record<string, typeof assigns> = {}
   assigns.forEach(a => {
     const pid = a.event_id
@@ -218,7 +217,7 @@ export async function fetchOptimizedEvents(
     groups[pid].push(a)
   })
 
-  // 7) annotate each event with its assignments + pick primary color
+  // 7) merge assignments + pick primary color
   const out = events.map(e => {
     const pid = extractParentEventId(e.id)
     const evAs = groups[pid] || []
@@ -235,7 +234,7 @@ export async function fetchOptimizedEvents(
 }
 
 // ————————————————————————————————————————
-// Top-level dashboard fetch
+// Top-level dashboard data
 // ————————————————————————————————————————
 export async function fetchOptimizedDashboardData(
   familyId: string,
