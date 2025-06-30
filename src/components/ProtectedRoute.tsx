@@ -1,7 +1,6 @@
 // File: src/components/ProtectedRoute.tsx
 import React from 'react'
 import { Navigate } from 'react-router-dom'
-import Spinner from '../ui/Spinner'      // default export
 import { useAuth } from '../hooks/useAuth'
 
 interface Props {
@@ -15,11 +14,11 @@ export default function ProtectedRoute({
 }: Props) {
   const { user, userProfile, loadingAuth, loadingProfile } = useAuth()
 
-  // still loading initial auth state?
+  // show a simple spinner while loading
   if (loadingAuth || loadingProfile) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <Spinner size="lg" />
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
       </div>
     )
   }
@@ -29,10 +28,11 @@ export default function ProtectedRoute({
     return <Navigate to="/auth" replace />
   }
 
-  // if user has no family yet and this route isn't allowed for that
+  // no family yet → onboarding
   if (!userProfile?.family_id && !allowWithoutFamily) {
     return <Navigate to="/onboarding" replace />
   }
 
+  // OK!
   return <>{children}</>
 }
