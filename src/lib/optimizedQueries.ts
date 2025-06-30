@@ -1,5 +1,4 @@
 // File: src/lib/optimizedQueries.ts
-
 import { startOfWeek, addWeeks, subWeeks } from 'date-fns'
 import { supabase } from './supabase'
 import { fetchHolidays, convertHolidaysToEvents } from './holidays'
@@ -24,9 +23,7 @@ class QueryCache {
     return e.data
   }
   clear() { this.cache.clear() }
-  // note: size is a getter on Map
   get size() { return this.cache.size }
-  // expose internal keys for family-clear
   get keys() { return Array.from(this.cache.keys()) }
 }
 const queryCache = new QueryCache()
@@ -49,22 +46,17 @@ export const performanceMonitor = {
 }
 
 // ————————————————————————————————————————
-// Cache utilities
+// Cache utils
 // ————————————————————————————————————————
 export const cacheUtils = {
-  clearAll: () => {
-    queryCache.clear()
-    console.log('🗑️ cleared all cache')
-  },
+  clearAll: () => { queryCache.clear(); console.log('🗑️ cleared all cache') },
   clearFamily: (familyId: string) => {
-    for (const key of queryCache.keys) {
-      if (key.includes(familyId)) queryCache.get(key) && queryCache.clear()
+    for (const k of queryCache.keys) {
+      if (k.includes(familyId)) queryCache.clear()
     }
     console.log(`🗑️ cleared cache for family ${familyId}`)
   },
-  stats: () => ({
-    entries: queryCache.size
-  })
+  stats: () => ({ entries: queryCache.size })
 }
 
 // ————————————————————————————————————————
@@ -80,8 +72,8 @@ function extractParentEventId(eventId: string): string {
 // ————————————————————————————————————————
 async function fetchOptimizedFamilyInfo(familyId: string) {
   const key = `family-info-${familyId}`
-  const cached = queryCache.get(key)
-  if (cached) return cached
+  const c = queryCache.get(key)
+  if (c) return c
 
   const { data, error } = await supabase
     .from('families')
@@ -99,8 +91,8 @@ async function fetchOptimizedFamilyInfo(familyId: string) {
 // ————————————————————————————————————————
 async function fetchOptimizedFamilyMembers(familyId: string) {
   const key = `family-members-${familyId}`
-  const cached = queryCache.get(key)
-  if (cached) return cached
+  const c = queryCache.get(key)
+  if (c) return c
 
   const { data, error } = await supabase
     .from('family_members')
@@ -109,52 +101,52 @@ async function fetchOptimizedFamilyMembers(familyId: string) {
     .order('name')
   if (error) throw error
 
-  queryCache.set(key, data || [], 5 * 60 * 1000)
+  queryCache.set(key, data||[], 5*60*1000)
   return data || []
 }
 
 // ————————————————————————————————————————
-// Fetch and convert holidays
+// Holidays & special events
 // ————————————————————————————————————————
 async function fetchOptimizedHolidays(start: Date, end: Date) {
   const raw = await fetchHolidays(start, end)
   return convertHolidaysToEvents(raw)
 }
 
-// ————————————————————————————————————————
-// Fetch special events (birthdays & anniversaries)
-// ————————————————————————————————————————
 async function fetchOptimizedSpecialEvents(familyId: string, start: Date, end: Date) {
   return generateSpecialEvents(familyId, start, end)
 }
 
 // ————————————————————————————————————————
-// Fetch events & attach assignments + color
+// Fetch events + assignments + color
 // ————————————————————————————————————————
 export async function fetchOptimizedEvents(
   familyId: string,
   currentDate: Date,
-  viewMode: 'full' | 'personal' = 'full',
+  viewMode: 'full'|'personal' = 'full',
   userId?: string
 ) {
   const t = performanceMonitor.startTimer('fetchOptimizedEvents')
   const weekStart = startOfWeek(currentDate)
   const rangeStart = subWeeks(weekStart, 2)
-  const rangeEnd = addWeeks(weekStart, 4)
+  const rangeEnd   = addWeeks(weekStart, 4)
 
   // 1) recurring + exceptions
   const { recurringEventManager } = await import('./recurringEventManager')
-  let events = await recurringEventManager.getEventsForDateRange(familyId, rangeStart, rangeEnd)
+  let events = await recurringEventManager.getEventsForDateRange(
+    familyId, rangeStart, rangeEnd
+  )
 
   // 2) personal filter
-  if (viewMode === 'personal' && userId) {
+  if (viewMode==='personal' && userId) {
     const { data: me } = await supabase
       .from('family_members')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle()
+
     events = me
-      ? events.filter(e => e.event_assignments?.some((a:any) => a.family_member_id === me.id))
+      ? events.filter(e => e.event_assignments?.some(a => a.family_member_id === me.id))
       : []
   }
 
@@ -170,30 +162,38 @@ export async function fetchOptimizedEvents(
     return []
   }
 
-  // 4) pull parent IDs
-  const parentIds = Array.from(new Set(events.map(e => extractParentEventId(e.id))))
+  // 4) build parentIds only for “real” events
+  const realParentIds = Array.from(new Set(
+    events
+      .filter(e => !e.isHoliday && !(e as any).isSpecialEvent)
+      .map(e => extractParentEventId(e.id))
+  ))
 
-  // 5) fetch all assignments in batch
+  // 5) batch-fetch assignments
   const { data: assigns = [], error: ae } = await supabase
     .from('event_assignments')
     .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
-    .in('event_id', parentIds)
+    .in('event_id', realParentIds)
   if (ae) throw ae
 
   // 6) group by parent
   const groups: Record<string, typeof assigns> = {}
   assigns.forEach(a => {
     const pid = a.event_id
-    groups[pid] = groups[pid] || []
+    groups[pid] = groups[pid]||[]
     groups[pid].push(a)
   })
 
-  // 7) re-attach + pick primary color
+  // 7) map events → include assignments/color (empty for holidays & specials)
   const out = events.map(e => {
     const pid = extractParentEventId(e.id)
     const evAs = groups[pid] || []
     const primary = evAs.find(a => !a.is_driver_helper)?.family_members
-    return { ...e, event_assignments: evAs, color: primary?.color ?? '#888' }
+    return {
+      ...e,
+      event_assignments: evAs,
+      color: primary?.color ?? '#888'
+    }
   })
 
   t.end()
@@ -206,15 +206,15 @@ export async function fetchOptimizedEvents(
 export async function fetchOptimizedDashboardData(
   familyId: string,
   currentDate: Date,
-  viewMode: 'full' | 'personal' = 'full',
+  viewMode: 'full'|'personal' = 'full',
   userId?: string
 ) {
   const t = performanceMonitor.startTimer('fetchOptimizedDashboardData')
-  const key = `dashboard-${familyId}-${currentDate.toDateString()}-${viewMode}-${userId || 'all'}`
-  const cached = queryCache.get(key)
-  if (cached) {
+  const key = `dashboard-${familyId}-${currentDate.toDateString()}-${viewMode}-${userId||'all'}`
+  const c = queryCache.get(key)
+  if (c) {
     t.end()
-    return cached
+    return c
   }
 
   const [familyInfo, events, familyMembers] = await Promise.all([
@@ -224,7 +224,7 @@ export async function fetchOptimizedDashboardData(
   ])
 
   const result = { familyInfo, events, familyMembers, timestamp: Date.now() }
-  queryCache.set(key, result, 3 * 60 * 1000)
+  queryCache.set(key, result, 3*60*1000)
   t.end()
   return result
 }
