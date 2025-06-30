@@ -1,89 +1,95 @@
 // File: src/hooks/useAuth.tsx
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import { useNavigate } from 'react-router-dom'
 
 interface UserProfile {
   id: string
-  family_id?: string
-  role?: string
+  email: string
+  family_id: string | null
+  role: string
+  // …any other fields you need
 }
 
-interface AuthContextValue {
-  user: any | null
+interface AuthContextType {
+  session: any
+  user: { id: string; email: string } | null
   userProfile: UserProfile | null
   loading: boolean
   signOut: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextValue>({
-  user: null,
-  userProfile: null,
-  loading: true,
-  signOut: async () => {}
-})
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const useAuth = () => useContext(AuthContext)
-
-const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<any | null>(null)
+export default function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<any>(null)
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
 
-  // 1) initial session fetch
+  // initial check
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setUser(data.session?.user ?? null)
       setLoading(false)
     })
 
-    // 2) subscribe to auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, data) => {
+        setSession(data.session)
+        setUser(data.session?.user ?? null)
+      }
+    )
 
     return () => {
-      if (subscription) {
-        subscription.unsubscribe()
-      }
+      if (subscription) subscription.unsubscribe()
     }
   }, [])
 
-  // 3) load profile whenever `user` changes
+  // load profile when user changes
   useEffect(() => {
     if (!user) {
       setUserProfile(null)
       return
     }
+
     setLoading(true)
     supabase
-      .from('family_members')
+      .from<UserProfile>('profiles')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .single()
       .then(({ data, error }) => {
-        if (!error && data) {
+        if (error) {
+          console.error('Error loading profile:', error)
+          // if missing profile, redirect to onboarding
+          navigate('/onboarding', { replace: true })
+        } else {
           setUserProfile(data)
         }
       })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [user])
+      .finally(() => setLoading(false))
+  }, [user, navigate])
 
-  // 4) sign out helper
   const signOut = async () => {
     await supabase.auth.signOut()
+    setSession(null)
     setUser(null)
     setUserProfile(null)
+    navigate('/auth', { replace: true })
   }
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, userProfile, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   )
 }
 
-export default AuthProvider
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be inside AuthProvider')
+  return ctx
+}
