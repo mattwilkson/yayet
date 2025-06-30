@@ -1,6 +1,6 @@
+// File: src/components/ProtectedRoute.tsx
 import React from 'react'
 import { Navigate } from 'react-router-dom'
-import Spinner from '../ui/Spinner'
 import { useAuth } from '../hooks/useAuth'
 
 interface ProtectedRouteProps {
@@ -15,7 +15,7 @@ function ProtectedRoute({ children, allowWithoutFamily = false }: ProtectedRoute
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <Spinner size="lg" />
+        <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full" />
       </div>
     )
   }
@@ -25,12 +25,11 @@ function ProtectedRoute({ children, allowWithoutFamily = false }: ProtectedRoute
     return <Navigate to="/auth" replace />
   }
 
-  // if they have no family and we don't explicitly allow it, go to onboarding
+  // no family yet → onboarding
   if (!allowWithoutFamily && !userProfile?.family_id) {
     return <Navigate to="/onboarding" replace />
   }
 
-  // all good!
   return <>{children}</>
 }
 
