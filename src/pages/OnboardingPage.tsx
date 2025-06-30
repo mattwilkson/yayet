@@ -1,7 +1,6 @@
-// File: src/pages/OnboardingPage.tsx
 import React, { useState } from 'react'
-import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
 
 function OnboardingPage() {
   const navigate = useNavigate()
@@ -10,7 +9,10 @@ function OnboardingPage() {
 
   const handleCreateFamily = async () => {
     setError(null)
-    const user = supabase.auth.user()
+    const {
+      data: { session }
+    } = await supabase.auth.getSession()
+    const user = session?.user
     if (!user) {
       setError('You must be logged in')
       return
@@ -25,7 +27,7 @@ function OnboardingPage() {
     if (dbError) {
       setError(dbError.message)
     } else {
-      navigate('/dashboard')
+      navigate('/dashboard', { replace: true })
     }
   }
 
