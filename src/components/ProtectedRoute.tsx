@@ -1,36 +1,38 @@
 // File: src/components/ProtectedRoute.tsx
 import React from 'react'
 import { Navigate } from 'react-router-dom'
+import Spinner from '../ui/Spinner'      // default export
 import { useAuth } from '../hooks/useAuth'
 
-interface ProtectedRouteProps {
+interface Props {
   children: React.ReactNode
   allowWithoutFamily?: boolean
 }
 
-function ProtectedRoute({ children, allowWithoutFamily = false }: ProtectedRouteProps) {
-  const { user, userProfile, loading } = useAuth()
+export default function ProtectedRoute({
+  children,
+  allowWithoutFamily = false,
+}: Props) {
+  const { user, userProfile, loadingAuth, loadingProfile } = useAuth()
 
-  // still checking session?
-  if (loading) {
+  // still loading initial auth state?
+  if (loadingAuth || loadingProfile) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full" />
+      <div className="h-screen flex items-center justify-center">
+        <Spinner size="lg" />
       </div>
     )
   }
 
-  // not logged in → login
+  // not signed in
   if (!user) {
     return <Navigate to="/auth" replace />
   }
 
-  // no family yet → onboarding
-  if (!allowWithoutFamily && !userProfile?.family_id) {
+  // if user has no family yet and this route isn't allowed for that
+  if (!userProfile?.family_id && !allowWithoutFamily) {
     return <Navigate to="/onboarding" replace />
   }
 
   return <>{children}</>
 }
-
-export default ProtectedRoute
