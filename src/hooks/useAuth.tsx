@@ -6,7 +6,6 @@ interface UserProfile {
   id: string
   family_id?: string
   role?: string
-  // …any other fields you store in family_members…
 }
 
 interface AuthContextValue {
@@ -30,7 +29,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // 1) on mount, fetch initial session
+  // 1) initial session fetch
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
@@ -38,36 +37,34 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     })
 
     // 2) subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null)
-      }
-    )
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
 
     return () => {
-      // cleanup listener - safely check if subscription exists
       if (subscription) {
         subscription.unsubscribe()
       }
     }
   }, [])
 
-  // 3) whenever user changes, load their profile record
+  // 3) load profile whenever `user` changes
   useEffect(() => {
     if (!user) {
       setUserProfile(null)
       return
     }
-
     setLoading(true)
     supabase
-      .from('family_members')       // or your actual profiles table
+      .from('family_members')
       .select('*')
       .eq('user_id', user.id)
       .single()
       .then(({ data, error }) => {
         if (!error && data) {
-          setUserProfile(data as UserProfile)
+          setUserProfile(data)
         }
       })
       .finally(() => {
@@ -75,7 +72,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       })
   }, [user])
 
-  // 4) expose signOut
+  // 4) sign out helper
   const signOut = async () => {
     await supabase.auth.signOut()
     setUser(null)
