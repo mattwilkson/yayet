@@ -1,13 +1,11 @@
-// File: src/pages/DashboardPage.tsx
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import {
   fetchOptimizedDashboardData,
-  performanceMonitor,
   cacheUtils
 } from '../lib/optimizedQueries'
 import { AdvancedCalendar } from '../components/Calendar/AdvancedCalendar'
-import { CustomEventModal } from '../components/EventModal/CustomEventModal'
+import CustomEventModal from '../components/EventModal/CustomEventModal'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { FamilyManagement } from '../components/FamilyManagement'
@@ -37,40 +35,33 @@ const DashboardPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'full' | 'personal'>('full')
   const [currentDate, setCurrentDate] = useState(new Date())
 
-  // INITIAL DATA FETCH
-  useEffect(() => {
-    if (userProfile?.family_id) {
-      fetchData()
-    } else {
-      setLoading(false)
-    }
-  }, [userProfile, viewMode])
-
   const fetchData = async () => {
-    const timer = performanceMonitor.startTimer('DashboardPage.fetchData')
     setLoading(true)
     try {
-      const dashboardData = await fetchOptimizedDashboardData(
-        userProfile!.family_id,
+      const { familyInfo, events, familyMembers } = await fetchOptimizedDashboardData(
+        userProfile!.family_id!,
         currentDate,
         viewMode,
         user!.id
       )
-      setFamilyInfo(dashboardData.familyInfo)
-      setEvents(dashboardData.events)
-      setFamilyMembers(dashboardData.familyMembers)
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
+      setFamilyInfo(familyInfo)
+      setEvents(events)
+      setFamilyMembers(familyMembers)
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err)
     } finally {
       setLoading(false)
-      timer.end()
     }
   }
 
-  // HANDLERS
-  const handleEventClick = (event: any) => {
-    if (event.isHoliday || event.isSpecialEvent) return
-    setSelectedEvent(event)
+  useEffect(() => {
+    if (userProfile?.family_id) fetchData()
+    else setLoading(false)
+  }, [userProfile, viewMode, currentDate])
+
+  const handleEventClick = (ev: any) => {
+    if (ev.isHoliday || ev.isSpecialEvent) return
+    setSelectedEvent(ev)
     setNewEventData(null)
     setShowEventModal(true)
   }
@@ -79,111 +70,108 @@ const DashboardPage: React.FC = () => {
     setNewEventData({ startTime, endTime })
     setShowEventModal(true)
   }
-  const handleEventModalClose = () => {
-    setShowEventModal(false)
-    setSelectedEvent(null)
-    setNewEventData(null)
-  }
-  const handleEventSave = async () => {
-    cacheUtils.clearFamily(userProfile!.family_id)
+  const handleClose = () => setShowEventModal(false)
+  const handleSave = async () => {
+    cacheUtils.clearFamily(userProfile!.family_id!)
     await fetchData()
-    handleEventModalClose()
+    handleClose()
   }
-  const handleEventDelete = async () => {
-    cacheUtils.clearFamily(userProfile!.family_id)
+  const handleDelete = async () => {
+    cacheUtils.clearFamily(userProfile!.family_id!)
     await fetchData()
-    handleEventModalClose()
+    handleClose()
   }
-  const handleExportCalendar = () => {
-    const eventsToExport = events.filter(e => !e.isHoliday && !e.isSpecialEvent)
-    const ical = generateICalendar(eventsToExport)
-    const famName = familyInfo?.family_name || 'Family'
-    const filename = `${famName}_${viewMode === 'personal' ? 'personal' : 'family'}_calendar.ics`
-    downloadFile(ical, filename, 'text/calendar')
+  const handleRefresh = () => {
+    cacheUtils.clearFamily(userProfile!.family_id!)
+    fetchData()
   }
-  const handleRefreshData = async () => {
-    cacheUtils.clearFamily(userProfile!.family_id)
-    await fetchData()
+  const handleExport = () => {
+    const evs = events.filter(e => !e.isHoliday && !e.isSpecialEvent)
+    const ical = generateICalendar(evs)
+    downloadFile(
+      ical,
+      `${familyInfo.family_name}_${viewMode}_calendar.ics`,
+      'text/calendar'
+    )
   }
 
-  // REFETCH WHEN DATE CHANGES
-  useEffect(() => {
-    if (userProfile?.family_id) fetchData()
-  }, [currentDate])
-
-  // LOADING STATE
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-gray-700 text-lg font-medium">Loading Dashboard…</p>
-        </div>
+        <div className="animate-spin h-16 w-16 border-b-2 border-blue-600" />
       </div>
     )
   }
 
   const familyName = familyInfo?.family_name || 'Family'
 
-  // PREPARE eventModalData
-  let eventModalData: any
-  if (selectedEvent) {
-    eventModalData = selectedEvent
-  } else if (newEventData) {
-    eventModalData = {
-      title: '',
-      description: '',
-      start_time: newEventData.startTime.toISOString(),
-      end_time: newEventData.endTime.toISOString(),
-      all_day: false,
-      location: ''
-    }
-  } else {
-    const defaultStart = new Date(currentDate)
-    defaultStart.setHours(9, 0, 0, 0)
-    const defaultEnd = new Date(defaultStart)
-    defaultEnd.setHours(10, 0, 0, 0)
-    eventModalData = {
-      title: '',
-      description: '',
-      start_time: defaultStart.toISOString(),
-      end_time: defaultEnd.toISOString(),
-      all_day: false,
-      location: ''
-    }
+  // prepare modal event data...
+  let modalEvent: any = selectedEvent ?? {
+    title: '',
+    description: '',
+    start_time: newEventData?.startTime.toISOString() || new Date().toISOString(),
+    end_time: newEventData?.endTime.toISOString() || new Date().toISOString(),
+    all_day: false,
+    location: ''
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* HEADER */}
-      {/* … the rest of your JSX unchanged … */}
+      <header className="bg-white shadow p-4 flex justify-between items-center">
+        <div className="flex items-center space-x-2">
+          <CalendarIcon className="h-6 w-6 text-blue-600" />
+          <h1 className="text-xl font-semibold">{familyName}</h1>
+        </div>
+        <div className="flex items-center space-x-2">
+          <button onClick={() => setViewMode('personal')}>
+            <User className={viewMode==='personal' ? 'text-blue-600' : ''} />
+          </button>
+          <button onClick={() => setViewMode('full')}>
+            <Users className={viewMode==='full' ? 'text-blue-600' : ''} />
+          </button>
+          <Button onClick={handleRefresh} variant="outline" size="sm">
+            <RefreshCw className="mr-1" /> Refresh
+          </Button>
+          <Button onClick={handleExport} variant="outline" size="sm">
+            <Download className="mr-1" /> Export
+          </Button>
+          <Button onClick={() => handleCreateEvent(new Date(), new Date())}>
+            <Plus className="mr-1" /> New Event
+          </Button>
+          <UserMenu />
+        </div>
+      </header>
 
-      {/* EVENT MODAL */}
+      <main className="flex-1 p-4">
+        <AdvancedCalendar
+          events={events}
+          onEventClick={handleEventClick}
+          onCreateEvent={handleCreateEvent}
+          currentDate={currentDate}
+          onDateChange={setCurrentDate}
+        />
+      </main>
+
       <CustomEventModal
         isOpen={showEventModal}
-        onClose={handleEventModalClose}
-        onSave={handleEventSave}
-        onDelete={handleEventDelete}
-        event={eventModalData}
+        event={modalEvent}
         familyMembers={familyMembers}
-        familyId={userProfile!.family_id}
+        familyId={userProfile!.family_id!}
         userId={user!.id}
+        onClose={handleClose}
+        onSave={handleSave}
+        onDelete={handleDelete}
       />
 
-      {/* FAMILY MANAGEMENT MODAL */}
       {userProfile?.role === 'admin' && (
-        <Modal isOpen={showFamilyModal} onClose={() => setShowFamilyModal(false)} title="Manage Family" size="lg">
+        <Modal isOpen={showFamilyModal} onClose={() => setShowFamilyModal(false)} title="Manage Family">
           <FamilyManagement
-            familyId={userProfile.family_id}
-            onUpdate={() => {
-              cacheUtils.clearFamily(userProfile.family_id)
-              fetchData()
-            }}
+            familyId={userProfile.family_id!}
+            onUpdate={handleRefresh}
           />
         </Modal>
       )}
     </div>
-  )
-}
+)
 
 export default DashboardPage
