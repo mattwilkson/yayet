@@ -1,98 +1,95 @@
-// File: src/hooks/useAuth.tsx
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode
-} from 'react'
+// File: src/pages/AuthPage.tsx
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useNavigate } from 'react-router-dom'
+import { Button } from '../components/ui/Button'
 
-interface UserProfile {
-  id: string
-  family_id: string
-  role: string
-  [key: string]: any
-}
+export function AuthPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-interface AuthContextValue {
-  user: any | null
-  userProfile: UserProfile | null
-  loading: boolean
-}
-
-const AuthContext = createContext<AuthContextValue>({
-  user: null,
-  userProfile: null,
-  loading: true
-})
-
-export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
-  const [user, setUser] = useState<any | null>(null)
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [searchParams] = useSearchParams()
+  const prefill = searchParams.get('email') || ''
 
-  // 1) On mount, fetch session and listen for changes
+  // If the landing page passed ?email= you can prefill
   useEffect(() => {
-    // initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-    })
+    if (prefill) setEmail(prefill)
+  }, [prefill])
 
-    // subscribe to auth changes
-    const { subscription } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null)
-      }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [])
-
-  // 2) Whenever `user` changes, load their profile
-  useEffect(() => {
-    if (!user) {
-      setUserProfile(null)
-      setLoading(false)
-      return
-    }
-
+  const handleSignIn = async () => {
     setLoading(true)
-    supabase
-      .from<UserProfile>('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single()
-      .then(({ data, error }) => {
-        if (error) {
-          console.error('Error loading user profile:', error)
-          setUserProfile(null)
-        } else {
-          setUserProfile(data)
-        }
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-  }, [user])
+    setError(null)
+    const { error: supaError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    setLoading(false)
 
-  // 3) Show spinner if still loading
-  if (loading) {
-    return null  /* or your <Spinner /> placeholder */
+    if (supaError) {
+      setError(supaError.message)
+    } else {
+      navigate('/dashboard')
+    }
   }
 
-  // 4) Provide context to the app
-  return (
-    <AuthContext.Provider value={{ user, userProfile, loading }}>
-      {children}
-    </AuthContext.Provider>
-  )
-}
+  const handleSignUp = async () => {
+    setLoading(true)
+    setError(null)
+    const { error: supaError } = await supabase.auth.signUp({
+      email,
+      password,
+    })
+    setLoading(false)
 
-export function useAuth() {
-  return useContext(AuthContext)
+    if (supaError) {
+      setError(supaError.message)
+    } else {
+      // after sign-up Supabase may send a confirmation email
+      navigate('/dashboard')
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md bg-white p-8 rounded-lg shadow">
+        <h1 className="text-2xl font-bold mb-6 text-center">Sign In / Sign Up</h1>
+
+        {error && <p className="text-red-600 mb-4">{error}</p>}
+
+        <label className="block mb-4">
+          <span className="text-sm font-medium text-gray-700">Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="you@example.com"
+          />
+        </label>
+
+        <label className="block mb-6">
+          <span className="text-sm font-medium text-gray-700">Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            className="mt-1 w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="••••••••"
+          />
+        </label>
+
+        <div className="flex justify-between items-center">
+          <Button onClick={handleSignIn} disabled={loading}>
+            {loading ? 'Working…' : 'Sign In'}
+          </Button>
+          <Button variant="outline" onClick={handleSignUp} disabled={loading}>
+            {loading ? 'Working…' : 'Sign Up'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
 }
