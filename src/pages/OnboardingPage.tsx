@@ -1,9 +1,9 @@
 // File: src/pages/OnboardingPage.tsx
 import React, { useState } from 'react'
-import { supabase } from '../lib/supabase'  // ← corrected path
+import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 
-export function OnboardingPage() {
+function OnboardingPage() {
   const navigate = useNavigate()
   const [familyName, setFamilyName] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -51,3 +51,5 @@ export function OnboardingPage() {
     </div>
   )
 }
+
+export default OnboardingPage
