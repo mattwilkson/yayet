@@ -1,9 +1,15 @@
 // File: src/hooks/useEventModalLogic.ts
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { format, addHours, parseISO, isValid, set } from 'date-fns'
+import { format, addHours, isValid } from 'date-fns'
 
-interface UseEventModalLogicProps {
+// Helper to strip composite UUID back to its “parent” UUID
+function extractParentEventId(eventId: string): string {
+  const parts = eventId.split('-')
+  return parts.length > 5 ? parts.slice(0, 5).join('-') : eventId
+}
+
+export interface UseEventModalLogicProps {
   isOpen: boolean
   event: any
   familyMembers: any[]
@@ -24,23 +30,23 @@ export function useEventModalLogic({
   onSave,
   onDelete
 }: UseEventModalLogicProps) {
-  // --- state ---
-  const [title, setTitle]                 = useState('')
-  const [description, setDescription]     = useState('')
-  const [startDate, _setStartDate]        = useState('')
-  const [startTime, _setStartTime]        = useState('')
-  const [endDate, _setEndDate]            = useState('')
-  const [endTime, _setEndTime]            = useState('')
-  const [allDay, setAllDay]               = useState(false)
-  const [location, setLocation]           = useState('')
+  // ----- state -----
+  const [title, setTitle]                     = useState('')
+  const [description, setDescription]         = useState('')
+  const [startDate, _setStartDate]            = useState('')
+  const [startTime, _setStartTime]            = useState('')
+  const [endDate, _setEndDate]                = useState('')
+  const [endTime, _setEndTime]                = useState('')
+  const [allDay, setAllDay]                   = useState(false)
+  const [location, setLocation]               = useState('')
   const [assignedMembers, setAssignedMembers] = useState<string[]>([])
-  const [driverHelper, setDriverHelper]   = useState('')
-  const [loading, setLoading]             = useState(false)
-  const [error, setError]                 = useState('')
+  const [driverHelper, setDriverHelper]       = useState('')
+  const [loading, setLoading]                 = useState(false)
+  const [error, setError]                     = useState('')
 
-  // Recurrence & extras omitted for brevity...
+  // (recurrence and extra-options state omitted for brevity...)
 
-  // --- Initialize when modal opens or event changes ---
+  // ----- initialize when modal opens or event changes -----
   useEffect(() => {
     if (!isOpen) return
 
@@ -61,23 +67,21 @@ export function useEventModalLogic({
     }
     _setStartDate(format(sd, 'yyyy-MM-dd'))
     _setStartTime(format(sd, 'HH:mm'))
-    _setEndDate(format(sd, 'yyyy-MM-dd'))    // 1) sync end date to start
+    _setEndDate(format(sd, 'yyyy-MM-dd'))   // QoL #1: sync end date to start
     _setEndTime(format(ed, 'HH:mm'))
 
-    // ...rest of init (assignments, recurrence)...
+    // (assignments, recurrence flags, extra-options init...)
   }, [isOpen, event])
 
-  // --- QoL #1: whenever startDate changes, update endDate to match ---
+  // ----- QoL #1: whenever startDate changes, update endDate to match -----
   const setStartDate = useCallback((v: string) => {
     _setStartDate(v)
     _setEndDate(v)
   }, [])
 
-  // --- QoL #2: when startTime changes, bump endTime 1h later ---
+  // ----- QoL #2: when startTime changes, bump endTime 1h later -----
   const setStartTime = useCallback((v: string) => {
     _setStartTime(v)
-    // parse into a Date on same day...
-    const [h, m] = v.split(':').map(Number)
     const base = new Date(`${startDate}T${v}`)
     if (isValid(base)) {
       const later = addHours(base, 1)
@@ -85,49 +89,150 @@ export function useEventModalLogic({
     }
   }, [startDate])
 
-  // --- handle manual end-time edits: if end < start, assume PM and add 12h ---
+  // ----- handle manual end-time edits: if end < start, assume PM and add 12h -----
   const setEndTime = useCallback((v: string) => {
-    // parse the raw time on the startDate
     let candidate = new Date(`${startDate}T${v}`)
     if (isValid(candidate)) {
-      // compare to start
       const startDt = new Date(`${startDate}T${startTime}`)
       if (candidate < startDt) {
         candidate = addHours(candidate, 12)
       }
       _setEndTime(format(candidate, 'HH:mm'))
     } else {
-      // fallback to raw
       _setEndTime(v)
     }
   }, [startDate, startTime])
 
-  // --- DELETE / SAVE omitted for brevity ---
+  // ----- CRUD helpers (create/update/delete events + assignments) -----
+  async function createEventAssignments(eid: string, members: string[], driver?: string) {
+    if (members.length) {
+      const payload = members.map(id => ({ event_id: eid, family_member_id: id, is_driver_helper: false }))
+      const { error } = await supabase.from('event_assignments').insert(payload)
+      if (error) throw error
+    }
+    if (driver) {
+      const { error } = await supabase
+        .from('event_assignments')
+        .insert({ event_id: eid, family_member_id: driver, is_driver_helper: true })
+      if (error) throw error
+    }
+  }
+  async function updateEventAssignments(eid: string, members: string[], driver?: string) {
+    let { error } = await supabase.from('event_assignments').delete().eq('event_id', eid)
+    if (error) throw error
+    await createEventAssignments(eid, members, driver)
+  }
+
+  // ----- save / delete handlers -----
+  const handleSave = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      if (!title.trim()) throw new Error('Title is required')
+      const sd = new Date(`${startDate}T${startTime}`)
+      const ed = new Date(`${endDate}T${endTime}`)
+      if (!isValid(sd) || !isValid(ed)) throw new Error('Invalid date/time')
+      if (ed < sd) throw new Error('End must be after start')
+
+      // Build payload
+      const payload: any = {
+        title,
+        description: description || null,
+        start_time: sd.toISOString(),
+        end_time: ed.toISOString(),
+        all_day: allDay,
+        location: location || null,
+        family_id: familyId,
+        created_by_user_id: userId
+      }
+
+      const pid = extractParentEventId(event.id || '')
+      if (event.id) {
+        // UPDATE existing
+        await supabase.from('events').update(payload).eq('id', pid)
+        await updateEventAssignments(pid, assignedMembers, driverHelper)
+      } else {
+        // CREATE new
+        const { data: single, error } = await supabase
+          .from('events')
+          .insert(payload)
+          .select()
+          .single()
+        if (error) throw error
+        await createEventAssignments(single.id, assignedMembers, driverHelper)
+      }
+
+      onSave()
+    } catch (err: any) {
+      setError(err.message || 'Save failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this event?')) return
+    setLoading(true)
+    setError('')
+    try {
+      const pid = extractParentEventId(event.id || '')
+      await supabase.from('events').delete().eq('id', pid)
+      onDelete()
+    } catch (err: any) {
+      setError(err.message || 'Delete failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ----- computed lists & helpers -----
+  const assignableFamilyMembers = familyMembers.filter(m => m.category === 'immediate_family')
+  const driverHelperFamilyMembers = familyMembers.filter(m => {
+    if (['extended_family','caregiver'].includes(m.category)) return true
+    if (!m.birthday) return ['Mother','Father'].includes(m.relationship)
+    const year = parseInt(m.birthday.split('/').pop() || '0')
+    return (new Date().getFullYear() - year) >= 16
+  })
+  const getDisplayName = (m: any) => m.nickname?.trim() || m.name
+  const dayMap: Record<string,string> = {
+    sunday:'S', monday:'M', tuesday:'T',
+    wednesday:'W', thursday:'T', friday:'F', saturday:'S'
+  }
+  const getDayLetter = (d: string) => dayMap[d] || d.charAt(0).toUpperCase()
 
   return {
+    // Modal control
     isOpen,
     onClose,
 
-    // basic fields
+    // Save & delete
+    onSave: handleSave,
+    onDelete: handleDelete,
+
+    // Status
+    loading,
+    error,
+
+    // Basic fields
     title, setTitle,
     description, setDescription,
 
     startDate, setStartDate,
     startTime, setStartTime,
-    endDate, setEndDate: _setEndDate,   // endDate only manually edited
+    endDate, _setEndDate,   // manually editable
     endTime, setEndTime,
 
     allDay, setAllDay,
     location, setLocation,
 
+    // Assignments
     assignedMembers, setAssignedMembers,
     driverHelper, setDriverHelper,
 
-    loading, error,
-
-    // ...recurrence, assignments, handlers...
-    onSave: /* your handleSave */,
-    onDelete: /* your handleDelete */,
-    // …
+    // Computed lists & helpers
+    assignableFamilyMembers,
+    driverHelperFamilyMembers,
+    getDisplayName,
+    getDayLetter
   }
 }
