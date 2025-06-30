@@ -13,19 +13,27 @@ interface CacheEntry<T> {
 class QueryCache {
   private cache = new Map<string, CacheEntry<any>>()
   private readonly DEFAULT_TTL = 5 * 60 * 1000
-  set<T>(key: string, data: T, ttl = this.DEFAULT_TTL) {
+
+  set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL) {
     this.cache.set(key, { data, timestamp: Date.now(), ttl })
   }
+
   get<T>(key: string): T | null {
-    const e = this.cache.get(key)
-    if (!e || Date.now() - e.timestamp > e.ttl) {
+    const entry = this.cache.get(key)
+    if (!entry || Date.now() - entry.timestamp > entry.ttl) {
       this.cache.delete(key)
       return null
     }
-    return e.data
+    return entry.data
   }
-  clear() { this.cache.clear() }
-  get size() { return this.cache.size }
+
+  clear() {
+    this.cache.clear()
+  }
+
+  get size() {
+    return this.cache.size
+  }
 }
 const queryCache = new QueryCache()
 
@@ -47,7 +55,7 @@ export const performanceMonitor = {
 }
 
 // ————————————————————————————————————————
-// Cache utils
+// Cache utilities
 // ————————————————————————————————————————
 export const cacheUtils = {
   clearAll: () => {
@@ -55,9 +63,11 @@ export const cacheUtils = {
     console.log('🗑️ cleared all cache')
   },
   clearFamily: (familyId: string) => {
+    // @ts-ignore
     for (const key of Array.from((queryCache as any).cache.keys())) {
       if (key.includes(familyId)) {
-        ;(queryCache as any).cache.delete(key)
+        // @ts-ignore
+        (queryCache as any).cache.delete(key)
       }
     }
     console.log(`🗑️ cleared cache for family ${familyId}`)
@@ -76,23 +86,19 @@ function extractParentEventId(eventId: string): string {
 }
 
 // ————————————————————————————————————————
-// Placeholder: fetch holidays (return [])
+// Placeholder: holidays & specials
 // ————————————————————————————————————————
 async function fetchOptimizedHolidays(start: Date, end: Date) {
-  // TODO: wire your real holiday-fetching logic
+  // TODO: implement real holiday logic
   return []
 }
-
-// ————————————————————————————————————————
-// Placeholder: fetch special events (return [])
-// ————————————————————————————————————————
 async function fetchOptimizedSpecialEvents(familyId: string, start: Date, end: Date) {
-  // TODO: wire your real special-event logic
+  // TODO: implement real special-events logic
   return []
 }
 
 // ————————————————————————————————————————
-// Fetch recurring + one-off events + assignments
+// Fetch all events (recurring + assignments + placeholders)
 // ————————————————————————————————————————
 export async function fetchOptimizedEvents(
   familyId: string,
@@ -102,7 +108,7 @@ export async function fetchOptimizedEvents(
 ) {
   const t = performanceMonitor.startTimer('fetchOptimizedEvents')
 
-  // 1) recurring series & exceptions
+  // 1) Recurring + exceptions
   const { recurringEventManager } = await import('./recurringEventManager')
   const weekStart  = startOfWeek(currentDate)
   const rangeStart = subWeeks(weekStart, 2)
@@ -111,46 +117,44 @@ export async function fetchOptimizedEvents(
     familyId, rangeStart, rangeEnd
   )
 
-  // 2) personal filter
+  // 2) Personal filter
   if (viewMode === 'personal' && userId) {
     const { data: me } = await supabase
       .from('family_members')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle()
-    if (me) {
-      events = events.filter(e =>
-        e.event_assignments?.some((a:any) => a.family_member_id === me.id)
-      )
-    } else {
-      events = []
-    }
+    events = me
+      ? events.filter(e =>
+          e.event_assignments?.some((a:any) => a.family_member_id === me.id)
+        )
+      : []
   }
 
-  // 3) holidays & specials
+  // 3) Holidays & specials
   const [hols, specs] = await Promise.all([
     fetchOptimizedHolidays(rangeStart, rangeEnd),
     fetchOptimizedSpecialEvents(familyId, rangeStart, rangeEnd)
   ])
   events = [...events, ...hols, ...specs]
 
-  // if none, bail
+  // 4) If none, return early
   if (!events.length) {
     t.end()
     return []
   }
 
-  // 4) collect *parent* IDs
+  // 5) Collect parent IDs
   const parentIds = Array.from(new Set(events.map(e => extractParentEventId(e.id))))
 
-  // 5) fetch all assignments for those parents
+  // 6) Bulk-fetch assignments
   const { data: assigns = [], error: ae } = await supabase
     .from('event_assignments')
     .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
     .in('event_id', parentIds)
   if (ae) throw ae
 
-  // 6) group by parent
+  // 7) Group by parent
   const groups: Record<string, typeof assigns> = {}
   assigns.forEach(a => {
     const pid = a.event_id
@@ -158,7 +162,7 @@ export async function fetchOptimizedEvents(
     groups[pid].push(a)
   })
 
-  // 7) attach assignments + pick a color
+  // 8) Attach assignments + pick color
   const out = events.map(e => {
     const pid = extractParentEventId(e.id)
     const evAs = groups[pid] || []
@@ -192,15 +196,30 @@ export async function fetchOptimizedDashboardData(
     return cached
   }
 
-  const [familyInfo, events, familyMembers] = await Promise.all([
-    // fetch familyInfo if you have a helper
-    supabase.from('families').select('id, family_name').eq('id', familyId).maybeSingle().then(r=>r.data),
+  // Fetch familyInfo, events, members
+  const [familyInfoResult, events, familyMembersResult] = await Promise.all([
+    supabase
+      .from('families')
+      .select('id, family_name')
+      .eq('id', familyId)
+      .maybeSingle()
+      .then(r => r.data),
     fetchOptimizedEvents(familyId, currentDate, viewMode, userId),
-    supabase.from('family_members').select('*').eq('family_id', familyId).then(r=>r.data || [])
+    supabase
+      .from('family_members')
+      .select('*')
+      .eq('family_id', familyId)
+      .then(r => r.data || [])
   ])
 
-  const result = { familyInfo, events, familyMembers, timestamp: Date.now() }
-  queryCache.set(key, result, 3 * 60 * 1000 /* 3m */)
+  const dashboardData = {
+    familyInfo: familyInfoResult,
+    events,
+    familyMembers: familyMembersResult,
+    timestamp: Date.now()
+  }
+
+  queryCache.set(key, dashboardData, 3 * 60 * 1000)
   t.end()
-  return result
+  return dashboardData
 }
