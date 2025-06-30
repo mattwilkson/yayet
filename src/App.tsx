@@ -5,24 +5,29 @@ import AuthProvider from './hooks/useAuth'
 import ProtectedRoute from './components/ProtectedRoute'
 import OnboardingPage from './pages/OnboardingPage'
 import DashboardPage from './pages/DashboardPage'
-import LoginPage from './pages/LoginPage'
+import AuthPage from './pages/AuthPage'
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          {/* public */}
+          <Route path="/auth" element={<AuthPage />} />
+
+          {/* onboarding: only allowed if no family */}
           <Route
             path="/onboarding"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowWithoutFamily>
                 <OnboardingPage />
               </ProtectedRoute>
             }
           />
+
+          {/* dashboard: must be logged in & have a family */}
           <Route
-            path="/dashboard"
+            path="/"
             element={
               <ProtectedRoute>
                 <DashboardPage />
