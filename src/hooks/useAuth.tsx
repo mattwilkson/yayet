@@ -38,15 +38,17 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     })
 
     // 2) subscribe to auth changes
-    const { subscription } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null)
       }
     )
 
     return () => {
-      // cleanup listener
-      subscription.unsubscribe()
+      // cleanup listener - safely check if subscription exists
+      if (subscription) {
+        subscription.unsubscribe()
+      }
     }
   }, [])
 
