@@ -6,16 +6,19 @@ import AuthPage from './pages/AuthPage'
 import OnboardingPage from './pages/OnboardingPage'
 import DashboardPage from './pages/DashboardPage'
 
-import { AuthProvider } from './hooks/useAuth'
+import AuthProvider from './hooks/useAuth'
 import ProtectedRoute from './components/ProtectedRoute'
 
-export function App() {
+function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* Public landing & auth */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth" element={<AuthPage />} />
+
+          {/* Onboarding */}
           <Route
             path="/onboarding"
             element={
@@ -24,6 +27,8 @@ export function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Dashboard */}
           <Route
             path="/dashboard/*"
             element={
@@ -37,3 +42,5 @@ export function App() {
     </BrowserRouter>
   )
 }
+
+export default App
