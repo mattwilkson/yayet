@@ -1,88 +1,76 @@
-// File: src/hooks/useAuth.tsx
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 
-interface UserProfile {
+interface Profile {
   id: string
   email: string
-  family_id: string | null
-  role: string
-  // …any other fields you need
+  family_id?: string
+  role?: 'admin' | 'member'
 }
 
-interface AuthContextType {
+interface AuthContextValue {
   session: any
-  user: { id: string; email: string } | null
-  userProfile: UserProfile | null
+  user: any
+  profile: Profile | null
   loading: boolean
   signOut: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
-export default function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<any>(null)
-  const [user, setUser] = useState<{ id: string; email: string } | null>(null)
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
+export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
+  const [session, setSession] = useState<any>(null)
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  // initial check
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setUser(data.session?.user ?? null)
-      setLoading(false)
     })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, data) => {
-        setSession(data.session)
-        setUser(data.session?.user ?? null)
-      }
-    )
-
+    const { data: listener } = supabase.auth.onAuthStateChange((_, s) => {
+      setSession(s)
+      setUser(s?.user ?? null)
+    })
     return () => {
-      if (subscription) subscription.unsubscribe()
+      listener.subscription.unsubscribe()
     }
   }, [])
 
   // load profile when user changes
   useEffect(() => {
     if (!user) {
-      setUserProfile(null)
+      setProfile(null)
+      setLoading(false)
       return
     }
-
     setLoading(true)
     supabase
-      .from<UserProfile>('profiles')
+      .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
       .then(({ data, error }) => {
         if (error) {
-          console.error('Error loading profile:', error)
-          // if missing profile, redirect to onboarding
-          navigate('/onboarding', { replace: true })
+          console.error(error)
+          setProfile(null)
         } else {
-          setUserProfile(data)
+          setProfile(data)
         }
+        setLoading(false)
       })
-      .finally(() => setLoading(false))
-  }, [user, navigate])
+  }, [user])
 
   const signOut = async () => {
     await supabase.auth.signOut()
-    setSession(null)
-    setUser(null)
-    setUserProfile(null)
-    navigate('/auth', { replace: true })
+    navigate('/auth')
   }
 
   return (
-    <AuthContext.Provider value={{ session, user, userProfile, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, profile, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   )
