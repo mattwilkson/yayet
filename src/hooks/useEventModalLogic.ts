@@ -1,4 +1,3 @@
-// File: src/hooks/useEventModalLogic.ts
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { format, addHours, isValid, parseISO } from 'date-fns'
@@ -61,10 +60,11 @@ export function useEventModalLogic({
   const [isRecurringInstance, setIsRecurringInstance] = useState(false)
   const [editMode, setEditMode]                       = useState<'single'|'all'>('single')
 
-  // ----- init on open/event -----
+  // ----- initialize when modal opens or event changes -----
   useEffect(() => {
     if (!isOpen) return
 
+    // basic fields
     setTitle(event.title || '')
     setDescription(event.description || '')
     setAllDay(event.all_day || false)
@@ -90,7 +90,7 @@ export function useEventModalLogic({
     const driver = assigns.find((a:any)=>a.is_driver_helper)
     setDriverHelper(driver?.family_member_id || '')
 
-    // recurrence
+    // reset recurrence
     setShowRecurringOptions(false)
     setRecurrenceType('none')
     setRecurrenceInterval(1)
@@ -115,31 +115,31 @@ export function useEventModalLogic({
       } catch {}
     }
 
+    // reset additional
     setShowAdditionalOptions(false)
     setArrivalTime('')
     setDriveTime('')
   }, [isOpen, event])
 
-  // ----- QoL #1 & #2: sync end date/time & keep 1h duration -----
+  // ----- QoL #1: mirror endDate to startDate -----
   useEffect(() => {
-    // whenever startDate changes, mirror it to endDate
     setEndDate(startDate)
   }, [startDate])
 
+  // ----- QoL #2 & #3: auto bump endTime +1h and switch to PM if needed -----
   useEffect(() => {
-    // keep duration ~1h on startTime change
-    const [h, m] = startTime.split(':').map(Number)
-    if (!isNaN(h) && !isNaN(m)) {
-      let nh = h + 1
-      let suffix = ''
-      // QoL #3: if resulting hour crosses noon, ensure PM format
-      if (nh >= 24) nh = nh - 24
-      const pad = (x:number)=>x.toString().padStart(2,'0')
-      setEndTime(`${pad(nh)}:${pad(m)}`)
+    const [sh, sm] = startTime.split(':').map(Number)
+    if (!isNaN(sh) && !isNaN(sm)) {
+      let nh = sh + 1
+      if (nh >= 24) nh -= 24
+      // if end hour numeric < start hour and <12, add 12 to shift PM
+      if (nh < sh && nh < 12) nh += 12
+      const pad = (x:number) => x.toString().padStart(2,'0')
+      setEndTime(`${pad(nh)}:${pad(sm)}`)
     }
   }, [startTime])
 
-  // ----- other handlers -----
+  // ----- handlers -----
   const toggleRecurringOptions  = () => setShowRecurringOptions(x => !x)
   const toggleAdditionalOptions = () => setShowAdditionalOptions(x => !x)
   const handleDayToggle         = (d: string) =>
@@ -147,10 +147,22 @@ export function useEventModalLogic({
 
   // ----- assignment helpers -----
   async function createEventAssignments(eid:string, members:string[], driver?:string) {
-    // ...unchanged...
+    if (members.length) {
+      const payload = members.map(id=>({ event_id: eid, family_member_id: id, is_driver_helper: false }))
+      const { error } = await supabase.from('event_assignments').insert(payload)
+      if (error) throw error
+    }
+    if (driver) {
+      const { error } = await supabase
+        .from('event_assignments')
+        .insert({ event_id: eid, family_member_id: driver, is_driver_helper: true })
+      if (error) throw error
+    }
   }
   async function updateEventAssignments(eid:string, members:string[], driver?:string) {
-    // ...unchanged...
+    let { error } = await supabase.from('event_assignments').delete().eq('event_id', eid)
+    if (error) throw error
+    await createEventAssignments(eid, members, driver)
   }
 
   // ----- save / delete -----
@@ -158,26 +170,18 @@ export function useEventModalLogic({
     setLoading(true); setError('')
     try {
       if (!title.trim()) throw new Error('Title is required')
-      // parse and validate
       const sd = new Date(`${startDate}T${startTime}`),
             ed = new Date(`${endDate}T${endTime}`)
       if (!isValid(sd)||!isValid(ed)) throw new Error('Invalid date/time')
       if (ed < sd) throw new Error('End must be after start')
       if (recurrenceType==='weekly' && selectedDays.length===0) throw new Error('Select at least one day')
 
-      // build payload
       const data: any = {
-        title,
-        description: description||null,
-        start_time: sd.toISOString(),
-        end_time: ed.toISOString(),
-        all_day: allDay,
-        location: location||null,
-        family_id: familyId,
-        created_by_user_id: userId
+        title, description: description||null,
+        start_time: sd.toISOString(), end_time: ed.toISOString(),
+        all_day: allDay, location: location||null,
+        family_id: familyId, created_by_user_id: userId
       }
-
-      // recurrence rule json
       let rule:any = null
       if (recurrenceType!=='none' && !isRecurringInstance) {
         rule = { type: recurrenceType, interval: recurrenceInterval }
@@ -186,16 +190,17 @@ export function useEventModalLogic({
         else rule.endCount = recurrenceEndCount
       }
 
-      // upsert logic
       if (isEditing) {
         const pid = extractParentEventId(event.id)
         if (isRecurringParent && editMode==='all') {
           await supabase.from('events').update({ ...data, recurrence_rule: rule?JSON.stringify(rule):null }).eq('id', pid)
           await updateEventAssignments(pid, assignedMembers, driverHelper)
-        } else if (isRecurringInstance && editMode==='single') {
+        }
+        else if (isRecurringInstance && editMode==='single') {
           await supabase.from('events').update(data).eq('id', event.id)
           await updateEventAssignments(event.id, assignedMembers, driverHelper)
-        } else {
+        }
+        else {
           await supabase.from('events').update(data).eq('id', pid)
           await updateEventAssignments(pid, assignedMembers, driverHelper)
         }
@@ -250,19 +255,33 @@ export function useEventModalLogic({
   // ----- computed lists & helpers -----
   const assignableFamilyMembers = familyMembers.filter(m=>m.category==='immediate_family')
   const driverHelperFamilyMembers = familyMembers.filter(m => {
-    // ...unchanged logic...
-    return true
+    if (['extended_family','caregiver'].includes(m.category)) return true
+    if (m.category!=='immediate_family') return false
+    if (!m.birthday) return ['Mother','Father'].includes(m.relationship)
+    const year = parseInt(m.birthday.split('/').pop()||'0')
+    return (new Date().getFullYear()-year)>=16
   })
   const getDisplayName = (m:any) => m.nickname?.trim()||m.name
-  const dayMap: Record<string,string> = { sunday:'S', monday:'M', tuesday:'T', wednesday:'W', thursday:'T', friday:'F', saturday:'S' }
+  const dayMap: Record<string,string> = {
+    sunday:'S', monday:'M', tuesday:'T',
+    wednesday:'W', thursday:'T', friday:'F', saturday:'S'
+  }
   const getDayLetter = (d:string) => dayMap[d]||d.charAt(0).toUpperCase()
   const getSelectedDaysSummary = () =>
-    selectedDays.sort(/* ... */).map(d=>d.charAt(0).toUpperCase()+d.slice(1)).join(', ')
+    selectedDays
+      .sort((a,b)=>['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].indexOf(a)
+               -['sunday','monday','tuesday','wednesday','thursday','friday','saturday'].indexOf(b))
+      .map(d=>d.charAt(0).toUpperCase()+d.slice(1))
+      .join(', ')
 
   return {
     // modal control
     isOpen,
     onClose,
+
+    // handlers
+    onSave: handleSave,
+    onDelete: handleDelete,
 
     // status
     loading,
@@ -300,17 +319,13 @@ export function useEventModalLogic({
     arrivalTime, setArrivalTime,
     driveTime, setDriveTime,
 
-    // editing flags
+    // flags
     isEditing,
     isRecurringParent,
     isRecurringInstance,
     editMode, setEditMode,
 
-    // **important**: map these to UI props
-    onSave: handleSave,
-    onDelete: handleDelete,
-
-    // helpers & lists
+    // lists + helpers
     assignableFamilyMembers,
     driverHelperFamilyMembers,
     getDisplayName,
