@@ -1,54 +1,45 @@
 // File: src/App.tsx
 import React from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './hooks/useAuth'
-import ProtectedRoute from './components/ProtectedRoute'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 
-// Your existing landing page:
 import { LandingPage } from './pages/LandingPage'
+import { AuthPage } from './pages/AuthPage'
+import { OnboardingPage } from './pages/OnboardingPage'
+import { DashboardPage } from './pages/DashboardPage'
 
-// New auth/onboarding/dashboard pages:
-import AuthPage from './pages/AuthPage'
-import OnboardingPage from './pages/OnboardingPage'
-import DashboardPage from './pages/DashboardPage'
+import { AuthProvider } from './hooks/useAuth'
+import { ProtectedRoute } from './components/ProtectedRoute'
 
-function App() {
+export function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* 1. Root stays your LandingPage */}
+          {/* Public landing & auth */}
           <Route path="/" element={<LandingPage />} />
-
-          {/* 2. Sign-in / signup lives at /auth */}
           <Route path="/auth" element={<AuthPage />} />
 
-          {/* 3. Onboarding (only allowed when you don’t yet have a family) */}
+          {/* Onboarding: allowWithoutFamily shows this for brand-new users */}
           <Route
             path="/onboarding"
             element={
-              <ProtectedRoute allowWithoutFamily>
+              <ProtectedRoute allowWithoutFamily={true}>
                 <OnboardingPage />
               </ProtectedRoute>
             }
           />
 
-          {/* 4. Actual app dashboard behind auth */}
+          {/* All other routes require a family */}
           <Route
-            path="/dashboard"
+            path="/dashboard/*"
             element={
               <ProtectedRoute>
                 <DashboardPage />
               </ProtectedRoute>
             }
           />
-
-          {/* 5. Everything else falls back to home */}
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
   )
 }
-
-export default App
