@@ -53,7 +53,7 @@ export const performanceMonitor = {
 }
 
 // ————————————————————————————————————————
-// Cache utils
+// Cache utilities
 // ————————————————————————————————————————
 export const cacheUtils = {
   clearAll: () => {
@@ -61,6 +61,7 @@ export const cacheUtils = {
     console.log('🗑️ cleared all cache')
   },
   clearFamily: (familyId: string) => {
+    // hack: reach into private map
     // @ts-ignore
     for (const key of Array.from((queryCache as any).cache.keys())) {
       if (key.includes(familyId)) {
@@ -82,7 +83,7 @@ function extractParentEventId(eventId: string): string {
   const parts = eventId.split('-')
   return parts.length > 5 ? parts.slice(0, 5).join('-') : eventId
 }
-function looksLikeUuid(id: string): boolean {
+function isUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 }
 
@@ -90,13 +91,16 @@ function looksLikeUuid(id: string): boolean {
 // Holiday & special-event fetchers
 // ————————————————————————————————————————
 async function fetchOptimizedHolidays(start: Date, end: Date) {
-  // Dynamically import your holiday logic
   const { fetchHolidays, convertHolidaysToEvents } = await import('./holidays')
   const raw = await fetchHolidays(start, end)
   return convertHolidaysToEvents(raw)
 }
 
-async function fetchOptimizedSpecialEvents(familyId: string, start: Date, end: Date) {
+async function fetchOptimizedSpecialEvents(
+  familyId: string,
+  start: Date,
+  end: Date
+) {
   const { generateSpecialEvents } = await import('./specialEvents')
   return generateSpecialEvents(familyId, start, end)
 }
@@ -112,7 +116,7 @@ export async function fetchOptimizedEvents(
 ) {
   const timer = performanceMonitor.startTimer('fetchOptimizedEvents')
 
-  // 1) Recurring + exceptions
+  // 1) recurring + exceptions
   const { recurringEventManager } = await import('./recurringEventManager')
   const weekStart  = startOfWeek(currentDate)
   const rangeStart = subWeeks(weekStart, 2)
@@ -121,14 +125,13 @@ export async function fetchOptimizedEvents(
     familyId, rangeStart, rangeEnd
   )
 
-  // 2) Personal filter
+  // 2) personal filter
   if (viewMode === 'personal' && userId) {
     const { data: me } = await supabase
       .from('family_members')
       .select('id')
       .eq('user_id', userId)
       .maybeSingle()
-
     if (me) {
       events = events.filter(e =>
         e.event_assignments?.some((a: any) => a.family_member_id === me.id)
@@ -138,42 +141,40 @@ export async function fetchOptimizedEvents(
     }
   }
 
-  // 3) Holidays & specials
+  // 3) holidays & specials
   const [hols, specs] = await Promise.all([
     fetchOptimizedHolidays(rangeStart, rangeEnd),
     fetchOptimizedSpecialEvents(familyId, rangeStart, rangeEnd)
   ])
   events = [...events, ...hols, ...specs]
 
-  // 4) If no events, done
+  // 4) nothing? bail
   if (!events.length) {
     timer.end()
     return []
   }
 
-  // 5) Parent IDs & UUID filter
+  // 5) parent IDs → only keep valid UUIDs
   const parentIds = Array.from(new Set(events.map(e => extractParentEventId(e.id))))
-  const uuids     = parentIds.filter(looksLikeUuid)
+  const uuids     = parentIds.filter(isUuid)
 
-  // 6) Fetch all assignments for those UUID parents
+  // 6) fetch all assignments in one go
   let assigns: any[] = []
   if (uuids.length) {
     const { data, error } = await supabase
       .from('event_assignments')
       .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
       .in('event_id', uuids)
-
     if (error) throw error
     assigns = data || []
   }
 
-  // 7) Group by parent and merge color
+  // 7) group + merge color
   const groups: Record<string, typeof assigns> = {}
   assigns.forEach(a => {
     groups[a.event_id] = groups[a.event_id] || []
     groups[a.event_id].push(a)
   })
-
   const out = events.map(e => {
     const pid = extractParentEventId(e.id)
     const evAs = groups[pid] || []
@@ -186,7 +187,7 @@ export async function fetchOptimizedEvents(
 }
 
 // ————————————————————————————————————————
-// Dashboard fetch + cache
+// Top-level dashboard fetch + cache
 // ————————————————————————————————————————
 export async function fetchOptimizedDashboardData(
   familyId: string,
@@ -202,7 +203,7 @@ export async function fetchOptimizedDashboardData(
     return cached
   }
 
-  // parallel fetch
+  // parallel familyInfo / events / members
   const [familyInfo, events, familyMembers] = await Promise.all([
     (async () => {
       const k = `family-info-${familyId}`
@@ -214,7 +215,7 @@ export async function fetchOptimizedDashboardData(
         .eq('id', familyId)
         .single()
       if (error) throw error
-      queryCache.set(k, data, 10*60*1000)
+      queryCache.set(k, data, 10 * 60 * 1000)
       return data
     })(),
     fetchOptimizedEvents(familyId, currentDate, viewMode, userId),
@@ -228,13 +229,13 @@ export async function fetchOptimizedDashboardData(
         .eq('family_id', familyId)
         .order('name')
       if (error) throw error
-      queryCache.set(k, data||[], 5*60*1000)
+      queryCache.set(k, data||[], 5 * 60 * 1000)
       return data||[]
     })()
   ])
 
   const result = { familyInfo, events, familyMembers, timestamp: Date.now() }
-  queryCache.set(cacheKey, result, 3*60*1000)
+  queryCache.set(cacheKey, result, 3 * 60 * 1000)
   timer.end()
   return result
 }
