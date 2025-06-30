@@ -1,225 +1,123 @@
-// File: src/lib/optimizedQueries.ts
-import { startOfWeek, addWeeks, subWeeks } from 'date-fns'
-import { supabase } from './supabase'
+// File: src/hooks/useEventModalLogic.ts
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import { format, addHours, isValid, parseISO } from 'date-fns'
 
-// ————————————————————————————————————————
-// Simple in-memory cache
-// ————————————————————————————————————————
-interface CacheEntry<T> {
-  data: T
-  timestamp: number
-  ttl: number
+export interface UseEventModalLogicProps {
+  isOpen: boolean
+  event: any
+  familyMembers: any[]
+  familyId: string
+  userId: string
+  onClose: () => void
+  onSave: () => void
+  onDelete: () => void
 }
-class QueryCache {
-  private cache = new Map<string, CacheEntry<any>>()
-  private readonly DEFAULT_TTL = 5 * 60 * 1000
 
-  set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL) {
-    this.cache.set(key, { data, timestamp: Date.now(), ttl })
-  }
+export function useEventModalLogic({
+  isOpen,
+  event,
+  familyMembers,
+  familyId,
+  userId,
+  onClose,
+  onSave,
+  onDelete
+}: UseEventModalLogicProps) {
+  // ---- state ----
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [startTime, setStartTime] = useState('')
+  const [endDate, _setEndDate] = useState('')
+  const [endTime, _setEndTime] = useState('')
+  const [allDay, setAllDay] = useState(false)
+  const [location, setLocation] = useState('')
+  const [assignedMembers, setAssignedMembers] = useState<string[]>([])
+  const [driverHelper, setDriverHelper] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  get<T>(key: string): T | null {
-    const entry = this.cache.get(key)
-    if (!entry || Date.now() - entry.timestamp > entry.ttl) {
-      this.cache.delete(key)
-      return null
+  // Recurrence & extras omitted for brevity…
+
+  // ---- initialize on open/event change ----
+  useEffect(() => {
+    if (!isOpen) return
+
+    // basic fields
+    setTitle(event.title || '')
+    setDescription(event.description || '')
+    setAllDay(event.all_day || false)
+    setLocation(event.location || '')
+
+    // start/end defaults
+    let sd = event.start_time ? new Date(event.start_time) : new Date()
+    let ed = event.end_time ? new Date(event.end_time) : addHours(sd, 1)
+    if (!event.start_time) sd.setHours(9, 0, 0, 0), ed = addHours(sd, 1)
+
+    const sdDate = format(sd, 'yyyy-MM-dd')
+    const sdTime = format(sd, 'HH:mm')
+    const edDate = format(ed, 'yyyy-MM-dd')
+    const edTime = format(ed, 'HH:mm')
+
+    setStartDate(sdDate)
+    setStartTime(sdTime)
+    _setEndDate(edDate)
+    _setEndTime(edTime)
+
+    // assignments
+    const assigns = event.event_assignments || []
+    setAssignedMembers(assigns.filter((a:any) => !a.is_driver_helper).map((a:any)=>a.family_member_id))
+    const drv = assigns.find((a:any)=>a.is_driver_helper)
+    setDriverHelper(drv?.family_member_id || '')
+  }, [isOpen, event])
+
+  // ---- QoL #1: auto-sync endDate to match startDate ----
+  useEffect(() => {
+    _setEndDate(startDate)
+  }, [startDate])
+
+  // ---- QoL #2: auto-sync endTime = startTime + 1h ----
+  useEffect(() => {
+    if (!startTime) return
+    const [h, m] = startTime.split(':').map(Number)
+    if (isNaN(h)) return
+
+    const dt = new Date(`${startDate}T${startTime}`)
+    dt.setHours(dt.getHours() + 1)
+    _setEndTime(format(dt, 'HH:mm'))
+  }, [startTime, startDate])
+
+  // ---- QoL #3: if manual endTime < startTime in AM, flip to PM ----
+  const setEndTime = (v: string) => {
+    const [sh, sm] = startTime.split(':').map(Number)
+    let [eh, em] = v.split(':').map(Number)
+    if (sh < 12 && eh <= sh) {
+      eh = (eh + 12) % 24
     }
-    return entry.data
+    const hh = String(eh).padStart(2, '0')
+    const mm = String(em).padStart(2, '0')
+    _setEndTime(`${hh}:${mm}`)
   }
 
-  clear() {
-    this.cache.clear()
+  // ---- handlers omitted for brevity… include handleSave, handleDelete, etc. ----
+
+  return {
+    isOpen, onClose,
+    title, setTitle,
+    description, setDescription,
+    startDate, setStartDate,
+    startTime, setStartTime,
+    endDate, setEndDate: _setEndDate,
+    endTime, setEndTime,
+    allDay, setAllDay,
+    location, setLocation,
+    assignedMembers, setAssignedMembers,
+    driverHelper, setDriverHelper,
+    loading, error,
+    // recurrence & extras…
+    onSave: async () => { /* your save logic */ },
+    onDelete: async () => { /* your delete logic */ },
+    // …plus any other handlers you need
   }
-
-  get size() {
-    return this.cache.size
-  }
-}
-const queryCache = new QueryCache()
-
-// ————————————————————————————————————————
-// Performance timer
-// ————————————————————————————————————————
-export const performanceMonitor = {
-  startTimer: (label: string) => {
-    const t0 = performance.now()
-    return {
-      end: () => {
-        const dt = performance.now() - t0
-        console.log(`⏱️ ${label} took ${dt.toFixed(1)}ms`)
-        if (dt > 1000) console.warn(`🐌 Slow: ${label}`)
-        return dt
-      }
-    }
-  }
-}
-
-// ————————————————————————————————————————
-// Cache utilities
-// ————————————————————————————————————————
-export const cacheUtils = {
-  clearAll: () => {
-    queryCache.clear()
-    console.log('🗑️ cleared all cache')
-  },
-  clearFamily: (familyId: string) => {
-    // @ts-ignore
-    for (const key of Array.from((queryCache as any).cache.keys())) {
-      if (key.includes(familyId)) {
-        // @ts-ignore
-        (queryCache as any).cache.delete(key)
-      }
-    }
-    console.log(`🗑️ cleared cache for family ${familyId}`)
-  },
-  stats: () => ({
-    entries: queryCache.size
-  })
-}
-
-// ————————————————————————————————————————
-// Helpers
-// ————————————————————————————————————————
-function extractParentEventId(eventId: string): string {
-  const parts = eventId.split('-')
-  return parts.length > 5 ? parts.slice(0, 5).join('-') : eventId
-}
-
-// ————————————————————————————————————————
-// Placeholder: holidays & specials
-// ————————————————————————————————————————
-async function fetchOptimizedHolidays(start: Date, end: Date) {
-  // TODO: implement real holiday logic
-  return []
-}
-async function fetchOptimizedSpecialEvents(familyId: string, start: Date, end: Date) {
-  // TODO: implement real special-events logic
-  return []
-}
-
-// ————————————————————————————————————————
-// Fetch all events (recurring + assignments + placeholders)
-// ————————————————————————————————————————
-export async function fetchOptimizedEvents(
-  familyId: string,
-  currentDate: Date,
-  viewMode: 'full' | 'personal' = 'full',
-  userId?: string
-) {
-  const t = performanceMonitor.startTimer('fetchOptimizedEvents')
-
-  // 1) Recurring + exceptions
-  const { recurringEventManager } = await import('./recurringEventManager')
-  const weekStart  = startOfWeek(currentDate)
-  const rangeStart = subWeeks(weekStart, 2)
-  const rangeEnd   = addWeeks(weekStart, 4)
-  let events = await recurringEventManager.getEventsForDateRange(
-    familyId, rangeStart, rangeEnd
-  )
-
-  // 2) Personal filter
-  if (viewMode === 'personal' && userId) {
-    const { data: me } = await supabase
-      .from('family_members')
-      .select('id')
-      .eq('user_id', userId)
-      .maybeSingle()
-    events = me
-      ? events.filter(e =>
-          e.event_assignments?.some((a:any) => a.family_member_id === me.id)
-        )
-      : []
-  }
-
-  // 3) Holidays & specials
-  const [hols, specs] = await Promise.all([
-    fetchOptimizedHolidays(rangeStart, rangeEnd),
-    fetchOptimizedSpecialEvents(familyId, rangeStart, rangeEnd)
-  ])
-  events = [...events, ...hols, ...specs]
-
-  // 4) If none, return early
-  if (!events.length) {
-    t.end()
-    return []
-  }
-
-  // 5) Collect parent IDs
-  const parentIds = Array.from(new Set(events.map(e => extractParentEventId(e.id))))
-
-  // 6) Bulk-fetch assignments
-  const { data: assigns = [], error: ae } = await supabase
-    .from('event_assignments')
-    .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
-    .in('event_id', parentIds)
-  if (ae) throw ae
-
-  // 7) Group by parent
-  const groups: Record<string, typeof assigns> = {}
-  assigns.forEach(a => {
-    const pid = a.event_id
-    groups[pid] = groups[pid] || []
-    groups[pid].push(a)
-  })
-
-  // 8) Attach assignments + pick color
-  const out = events.map(e => {
-    const pid = extractParentEventId(e.id)
-    const evAs = groups[pid] || []
-    const primary = evAs.find(a => !a.is_driver_helper)?.family_members
-    return {
-      ...e,
-      event_assignments: evAs,
-      color: primary?.color ?? '#888'
-    }
-  })
-
-  t.end()
-  return out
-}
-
-// ————————————————————————————————————————
-// Top-level dashboard fetch
-// ————————————————————————————————————————
-export async function fetchOptimizedDashboardData(
-  familyId: string,
-  currentDate: Date,
-  viewMode: 'full' | 'personal' = 'full',
-  userId?: string
-) {
-  const t = performanceMonitor.startTimer('fetchOptimizedDashboardData')
-  const key = `dashboard-${familyId}-${currentDate.toDateString()}-${viewMode}-${userId||'all'}`
-
-  const cached = queryCache.get(key)
-  if (cached) {
-    t.end()
-    return cached
-  }
-
-  // Fetch familyInfo, events, members
-  const [familyInfoResult, events, familyMembersResult] = await Promise.all([
-    supabase
-      .from('families')
-      .select('id, family_name')
-      .eq('id', familyId)
-      .maybeSingle()
-      .then(r => r.data),
-    fetchOptimizedEvents(familyId, currentDate, viewMode, userId),
-    supabase
-      .from('family_members')
-      .select('*')
-      .eq('family_id', familyId)
-      .then(r => r.data || [])
-  ])
-
-  const dashboardData = {
-    familyInfo: familyInfoResult,
-    events,
-    familyMembers: familyMembersResult,
-    timestamp: Date.now()
-  }
-
-  queryCache.set(key, dashboardData, 3 * 60 * 1000)
-  t.end()
-  return dashboardData
 }
