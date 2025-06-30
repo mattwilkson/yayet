@@ -133,25 +133,28 @@ export function useEventModalLogic({
     setDriveTime('')
   }, [isOpen, event])
 
-  // QoL #1 & #2 & #3: when startDate or startTime change, auto-bump endDate/time
-  useEffect(() => {
-    if (!startDate || !startTime) return
-    // match endDate to startDate
-    setEndDate(startDate)
+  // whenever startDate OR startTime changes, mirror and bump endDate/endTime
+useEffect(() => {
+  if (!startDate || !startTime) return
 
-    // parse startTime and add one hour
-    const parsed = parse(startTime, 'HH:mm', new Date())
-    if (!isValid(parsed)) return
-    let bumped = addHours(parsed, 1)
+  // 1) mirror the date
+  setEndDate(startDate)
 
-    // QoL #3: if start is before noon and bumped > 12h, keep PM
-    const startHour = parsed.getHours()
-    if (startHour < 12 && bumped.getHours() < startHour) {
-      bumped = addHours(parsed, 13) // force PM slot
-    }
+  // 2) parse and bump one hour
+  const parsed = parse(startTime, 'HH:mm', new Date())
+  if (!isValid(parsed)) return
+  let bumped = addHours(parsed, 1)
 
-    setEndTime(format(bumped, 'HH:mm'))
-  }, [startDate, startTime])
+  // 3) QoL #3: if the start is before noon, and our default bump
+  //    would put us in the morning (i.e. bumped.getHours() < startHour),
+  //    force it into the afternoon slot instead (startHour+13).
+  const startHour = parsed.getHours()
+  if (startHour < 12 && bumped.getHours() < startHour) {
+    bumped = addHours(parsed, 13)
+  }
+
+  setEndTime(format(bumped, 'HH:mm'))
+}, [startDate, startTime])
 
   // weekly default day
   useEffect(() => {
@@ -165,6 +168,22 @@ export function useEventModalLogic({
       }
     }
   }, [recurrenceType, startDate, startTime])
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QoL #3 A: whenever startDate changes, mirror it into endDate
+useEffect(() => {
+  setEndDate(startDate)
+}, [startDate])
+
+// QoL #3 B: whenever startTime changes, push endTime one hour later
+useEffect(() => {
+  const [h, m] = startTime.split(':').map(Number)
+  if (!isNaN(h) && !isNaN(m)) {
+    let endH = h + 1
+    if (endH >= 24) endH -= 24
+    setEndTime(`${String(endH).padStart(2,'0')}:${String(m).padStart(2,'0')}`)
+  }
+}, [startTime])
 
   // handlers
   const toggleRecurringOptions = () => setShowRecurringOptions(x => !x)
