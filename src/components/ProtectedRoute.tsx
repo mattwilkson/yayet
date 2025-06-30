@@ -1,7 +1,6 @@
-// src/components/ProtectedRoute.tsx
+// File: src/components/ProtectedRoute.tsx
 import React from 'react'
 import { Navigate } from 'react-router-dom'
-import { Spinner } from '../ui/Spinner'
 import { useAuth } from '../hooks/useAuth'
 
 export function ProtectedRoute({
@@ -13,21 +12,25 @@ export function ProtectedRoute({
 }) {
   const { user, userProfile, authLoading, profileLoading } = useAuth()
 
-  // 1) still checking auth state? show spinner
+  // 1) still checking auth or profile? show a simple loading indicator
   if (authLoading || profileLoading) {
-    return <Spinner />
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-gray-600">Loading…</p>
+      </div>
+    )
   }
 
-  // 2) not logged in? go to login
+  // 2) not signed in? send to /login
   if (!user) {
     return <Navigate to="/login" replace />
   }
 
-  // 3) logged in but no family yet, and we're not on the onboarding route
+  // 3) signed in but no family yet? send to /onboarding (unless we explicitly allow it)
   if (!userProfile?.family_id && !allowWithoutFamily) {
     return <Navigate to="/onboarding" replace />
   }
 
-  // 4) otherwise, render the protected children
+  // 4) all good—render the protected content
   return <>{children}</>
 }
