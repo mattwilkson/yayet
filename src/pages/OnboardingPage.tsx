@@ -1,445 +1,228 @@
-import { useState, useEffect } from 'react'
-import { Navigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import { supabase } from '../lib/supabase'
-import { Button } from '../components/ui/Button'
-import { Input } from '../components/ui/Input'
-import { Select } from '../components/ui/Select'
-import { FlexibleDateInput } from '../components/ui/FlexibleDateInput'
-import { MarketingConsentCheckbox } from '../components/MarketingConsentCheckbox'
-import { Users, Plus, Trash2, CheckCircle, ArrowRight } from 'lucide-react'
+// File: src/lib/optimizedQueries.ts
+import { startOfWeek, subWeeks, addWeeks } from 'date-fns'
+import { supabase } from './supabase'
 
-interface FamilyMember {
-  name: string
-  nickname?: string
-  relationship: string
-  birthday?: string
-  anniversary?: string
-  address?: string
+// ————————— Simple in-memory cache —————————
+interface CacheEntry<T> {
+  data: T
+  timestamp: number
+  ttl: number
+}
+class QueryCache {
+  private cache = new Map<string, CacheEntry<any>>()
+  private readonly DEFAULT_TTL = 5 * 60 * 1000 // 5m
+
+  set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL) {
+    this.cache.set(key, { data, timestamp: Date.now(), ttl })
+  }
+
+  get<T>(key: string): T | null {
+    const e = this.cache.get(key)
+    if (!e || Date.now() - e.timestamp > e.ttl) {
+      this.cache.delete(key)
+      return null
+    }
+    return e.data
+  }
+
+  clear() {
+    this.cache.clear()
+  }
+
+  get size() {
+    return this.cache.size
+  }
+}
+const queryCache = new QueryCache()
+
+// ————————— Performance monitor —————————
+export const performanceMonitor = {
+  startTimer: (label: string) => {
+    const t0 = performance.now()
+    return {
+      end: () => {
+        const dt = performance.now() - t0
+        console.log(`⏱️ ${label} took ${dt.toFixed(1)}ms`)
+        if (dt > 1000) console.warn(`🐌 Slow: ${label}`)
+        return dt
+      }
+    }
+  }
 }
 
-const relationshipOptions = [
-  { value: '', label: 'Select One' },
-  { value: 'Father', label: 'Father' },
-  { value: 'Mother', label: 'Mother' },
-  { value: 'Son', label: 'Son' },
-  { value: 'Daughter', label: 'Daughter' },
-  { value: 'Grandpa', label: 'Grandpa' },
-  { value: 'Grandma', label: 'Grandma' },
-  { value: 'Uncle', label: 'Uncle' },
-  { value: 'Aunt', label: 'Aunt' },
-  { value: 'Cousin', label: 'Cousin' },
-  { value: 'Caregiver', label: 'Caregiver' },
-  { value: 'Pet Sitter', label: 'Pet Sitter' },
-  { value: 'Babysitter', label: 'Babysitter' },
-  { value: 'Dog', label: 'Dog' },
-  { value: 'Cat', label: 'Cat' },
-  { value: 'Other', label: 'Other' },
-]
+// ————————— Cache utils —————————
+export const cacheUtils = {
+  clearAll: () => {
+    queryCache.clear()
+    console.log('🗑️ cleared all cache')
+  },
+  clearFamily: (familyId: string) => {
+    for (const key of Array.from((queryCache as any).cache.keys())) {
+      if (key.includes(familyId)) (queryCache as any).cache.delete(key)
+    }
+    console.log(`🗑️ cleared cache for family ${familyId}`)
+  },
+  stats: () => ({
+    entries: queryCache.size
+  })
+}
 
-export const OnboardingPage = () => {
-  const { user, userProfile, refreshProfile } = useAuth()
-  const [step, setStep] = useState(1)
-  const [loading, setLoading] = useState(false)
-  const [familyName, setFamilyName] = useState('')
-  const [marketingConsent, setMarketingConsent] = useState(false)
-  const [members, setMembers] = useState<FamilyMember[]>([
-    { name: '', nickname: '', relationship: '' }
+// ————————— Helper to strip composite IDs —————————
+function extractParentEventId(eventId: string): string {
+  const parts = eventId.split('-')
+  return parts.length > 5 ? parts.slice(0, 5).join('-') : eventId
+}
+
+// ————————— Family info — static —————————
+async function fetchOptimizedFamilyInfo(familyId: string) {
+  const key = `family-info-${familyId}`
+  const cached = queryCache.get(key)
+  if (cached) return cached
+
+  const { data, error } = await supabase
+    .from('families')
+    .select('id, family_name, admin_user_id')
+    .eq('id', familyId)
+    .single()
+  if (error) throw error
+
+  queryCache.set(key, data, 10 * 60 * 1000) // 10m
+  return data
+}
+
+// ————————— Family members — static —————————
+async function fetchOptimizedFamilyMembers(familyId: string) {
+  const key = `family-members-${familyId}`
+  const cached = queryCache.get(key)
+  if (cached) return cached
+
+  const { data, error } = await supabase
+    .from('family_members')
+    .select('id, name, nickname, relationship, category, color, user_id, birthday, anniversary')
+    .eq('family_id', familyId)
+    .order('name')
+  if (error) throw error
+
+  queryCache.set(key, data || [], 5 * 60 * 1000) // 5m
+  return data || []
+}
+
+// ————————— Holidays stub —————————
+// Replace with your real logic or import
+async function fetchOptimizedHolidays(start: Date, end: Date): Promise<any[]> {
+  // e.g. import and call your convertHolidaysToEvents(...)
+  return []
+}
+
+// ————————— Special events stub —————————
+async function fetchOptimizedSpecialEvents(familyId: string, start: Date, end: Date): Promise<any[]> {
+  // e.g. import and call your generateSpecialEvents(...)
+  return []
+}
+
+// ————————— Fetch events + assignments —————————
+export async function fetchOptimizedEvents(
+  familyId: string,
+  currentDate: Date,
+  viewMode: 'full' | 'personal' = 'full',
+  userId?: string
+) {
+  const t = performanceMonitor.startTimer('fetchOptimizedEvents')
+
+  // 1) recurring series + exceptions
+  const { recurringEventManager } = await import('./recurringEventManager')
+  const weekStart  = startOfWeek(currentDate)
+  const rangeStart = subWeeks(weekStart, 2)
+  const rangeEnd   = addWeeks(weekStart, 4)
+  let events = await recurringEventManager.getEventsForDateRange(
+    familyId,
+    rangeStart,
+    rangeEnd
+  )
+
+  // 2) personal filter
+  if (viewMode === 'personal' && userId) {
+    const { data: me } = await supabase
+      .from('family_members')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (me) {
+      events = events.filter(e =>
+        e.event_assignments?.some((a: any) => a.family_member_id === me.id)
+      )
+    } else {
+      events = []
+    }
+  }
+
+  // 3) holidays + specials
+  const [hols, specs] = await Promise.all([
+    fetchOptimizedHolidays(rangeStart, rangeEnd),
+    fetchOptimizedSpecialEvents(familyId, rangeStart, rangeEnd)
+  ])
+  events = [...events, ...hols, ...specs]
+
+  if (!events.length) {
+    t.end()
+    return []
+  }
+
+  // 4) fetch all assignments by parent-ID
+  const parentIds = Array.from(
+    new Set(events.map(e => extractParentEventId(e.id)))
+  )
+  const { data: assigns = [], error: ae } = await supabase
+    .from('event_assignments')
+    .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
+    .in('event_id', parentIds)
+  if (ae) throw ae
+
+  // 5) group + re-attach + pick primary color
+  const groups: Record<string, typeof assigns> = {}
+  assigns.forEach(a => {
+    groups[a.event_id] = groups[a.event_id] || []
+    groups[a.event_id].push(a)
+  })
+
+  const out = events.map(e => {
+    const pid = extractParentEventId(e.id)
+    const evAs = groups[pid] || []
+    const primary = evAs.find(a => !a.is_driver_helper)?.family_members
+    return {
+      ...e,
+      event_assignments: evAs,
+      color: primary?.color ?? '#888'
+    }
+  })
+
+  t.end()
+  return out
+}
+
+// ————————— Top-level dashboard fetch —————————
+export async function fetchOptimizedDashboardData(
+  familyId: string,
+  currentDate: Date,
+  viewMode: 'full' | 'personal' = 'full',
+  userId?: string
+) {
+  const t = performanceMonitor.startTimer('fetchOptimizedDashboardData')
+  const key = `dashboard-${familyId}-${currentDate.toDateString()}-${viewMode}-${userId||'all'}`
+  const cached = queryCache.get(key)
+  if (cached) {
+    t.end()
+    return cached
+  }
+
+  const [familyInfo, events, familyMembers] = await Promise.all([
+    fetchOptimizedFamilyInfo(familyId),
+    fetchOptimizedEvents(familyId, currentDate, viewMode, userId),
+    fetchOptimizedFamilyMembers(familyId)
   ])
 
-  console.log('🎯 OnboardingPage rendering - User:', user?.id, 'Profile:', userProfile?.id, 'Family ID:', userProfile?.family_id)
-
-  // CRITICAL: If user has family, redirect to dashboard immediately
-  useEffect(() => {
-    if (userProfile?.family_id) {
-      console.log('✅ User already has family, should redirect to dashboard')
-    }
-  }, [userProfile])
-
-  // This redirect is now handled by ProtectedRoute, but keeping as backup
-  if (userProfile?.family_id) {
-    console.log('🔄 User has family_id, redirecting to dashboard')
-    return <Navigate to="/dashboard" replace />
-  }
-
-  const getCategoryFromRelationship = (relationship: string) => {
-    const immediateFamilyRelationships = ['Father', 'Mother', 'Son', 'Daughter']
-    const extendedFamilyRelationships = ['Grandpa', 'Grandma', 'Uncle', 'Aunt', 'Cousin']
-    const petRelationships = ['Dog', 'Cat']
-    
-    if (immediateFamilyRelationships.includes(relationship)) {
-      return 'immediate_family'
-    } else if (extendedFamilyRelationships.includes(relationship)) {
-      return 'extended_family'
-    } else if (petRelationships.includes(relationship)) {
-      return 'pet'
-    } else {
-      return 'caregiver'
-    }
-  }
-
-  const addMember = () => {
-    setMembers([...members, { name: '', nickname: '', relationship: '' }])
-  }
-
-  const removeMember = (index: number) => {
-    if (members.length > 1) {
-      setMembers(members.filter((_, i) => i !== index))
-    }
-  }
-
-  const updateMember = (index: number, field: keyof FamilyMember, value: string) => {
-    const updatedMembers = [...members]
-    updatedMembers[index] = { ...updatedMembers[index], [field]: value }
-    setMembers(updatedMembers)
-  }
-
-  const handleFamilySetup = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!familyName.trim()) return
-
-    setLoading(true)
-
-    try {
-      console.log('🏠 Creating family:', familyName)
-      
-      // Create family
-      const { data: family, error: familyError } = await supabase
-        .from('families')
-        .insert({
-          family_name: familyName,
-          admin_user_id: user!.id,
-        })
-        .select()
-        .single()
-
-      if (familyError) throw familyError
-
-      console.log('✅ Family created:', family)
-
-      // Update user with family_id and admin role
-      const { error: userError } = await supabase
-        .from('users')
-        .update({
-          family_id: family.id,
-          role: 'admin',
-        })
-        .eq('id', user!.id)
-
-      if (userError) throw userError
-
-      console.log('✅ User updated with family_id and admin role')
-
-      // CRITICAL: Refresh profile to get the updated family_id
-      await refreshProfile()
-      setStep(2)
-    } catch (error) {
-      console.error('❌ Error creating family:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleMembersSetup = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const validMembers = members.filter(member => member.name.trim() && member.relationship)
-    if (validMembers.length === 0) return
-
-    setLoading(true)
-
-    try {
-      console.log('👥 Adding family members:', validMembers.length)
-      
-      // CRITICAL: Use the current userProfile.family_id
-      if (!userProfile?.family_id) {
-        throw new Error('No family_id found in user profile')
-      }
-      
-      const membersToInsert = validMembers.map(member => ({
-        family_id: userProfile.family_id,
-        name: member.name,
-        nickname: member.nickname || null,
-        relationship: member.relationship,
-        category: getCategoryFromRelationship(member.relationship),
-        role: 'member', // New members start as regular members
-        birthday: member.birthday || null, // Store as text directly
-        anniversary: member.anniversary || null, // Store as text directly
-        address: member.address || null,
-      }))
-
-      console.log('👥 Members to insert:', membersToInsert)
-
-      const { error } = await supabase
-        .from('family_members')
-        .insert(membersToInsert)
-
-      if (error) throw error
-
-      console.log('✅ Family members added')
-      
-      // Update marketing consent if user opted in
-      if (marketingConsent) {
-        try {
-          // Get client IP for audit trail
-          const ipResponse = await fetch('https://api.ipify.org?format=json')
-          const ipData = await ipResponse.json()
-          const ipAddress = ipData.ip
-          
-          // Call the RPC function to update consent with audit trail
-          await supabase.rpc('update_marketing_consent', {
-            p_user_id: user!.id,
-            p_consent: true,
-            p_source: 'onboarding',
-            p_ip_address: ipAddress,
-            p_user_agent: navigator.userAgent
-          })
-          
-          console.log('✅ Marketing consent recorded')
-        } catch (consentError) {
-          console.error('❌ Error recording marketing consent:', consentError)
-          // Don't fail the onboarding process if consent recording fails
-        }
-      }
-      
-      // Mark onboarding as complete
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ onboarding_complete: true })
-        .eq('id', user!.id)
-        
-      if (updateError) {
-        console.error('❌ Error marking onboarding complete:', updateError)
-        // Don't fail the process for this
-      }
-      
-      // Navigate to dashboard - user has now completed onboarding
-      window.location.href = '/dashboard'
-    } catch (error) {
-      console.error('❌ Error adding family members:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  console.log('🎯 OnboardingPage rendering step:', step)
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-blue-600 rounded-lg">
-                <Users className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xl font-bold text-gray-900">Family Scheduler</span>
-            </div>
-            
-            <div className="text-sm text-gray-500">
-              Step {step} of 2
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex items-center justify-center p-4 py-12">
-        <div className="max-w-2xl w-full">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center mb-4">
-              <div className="p-3 bg-blue-600 rounded-xl">
-                <Users className="h-8 w-8 text-white" />
-              </div>
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900">Set Up Your Family</h1>
-            <p className="mt-2 text-gray-600">
-              Let's get your family organized and ready to schedule together
-            </p>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            {/* Progress Indicator */}
-            <div className="mb-8">
-              <div className="flex items-center">
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
-                  step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {step > 1 ? <CheckCircle className="h-5 w-5" /> : '1'}
-                </div>
-                <div className={`flex-1 h-0.5 mx-4 ${
-                  step >= 2 ? 'bg-blue-600' : 'bg-gray-200'
-                }`} />
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
-                  step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-                }`}>
-                  2
-                </div>
-              </div>
-              <div className="flex justify-between mt-2">
-                <span className="text-sm text-gray-600">Family Name</span>
-                <span className="text-sm text-gray-600">Add Members</span>
-              </div>
-            </div>
-
-            {step === 1 && (
-              <form onSubmit={handleFamilySetup} className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    What's your family name?
-                  </h2>
-                  <p className="text-gray-600 mb-4">
-                    This will be displayed throughout the app and help identify your family.
-                  </p>
-                  <Input
-                    label="Family Name"
-                    value={familyName}
-                    onChange={(e) => setFamilyName(e.target.value)}
-                    placeholder="The Smith Family"
-                    required
-                  />
-                </div>
-
-                {/* Marketing Consent Checkbox */}
-                <div className="pt-4 border-t border-gray-200">
-                  <MarketingConsentCheckbox
-                    checked={marketingConsent}
-                    onChange={setMarketingConsent}
-                    source="onboarding"
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  className="w-full"
-                  size="lg"
-                  loading={loading}
-                  disabled={!familyName.trim()}
-                >
-                  Continue to Add Members
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </form>
-            )}
-
-            {step === 2 && (
-              <form onSubmit={handleMembersSetup} className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    Add Family Members
-                  </h2>
-                  <p className="text-gray-600 mb-4">
-                    Add all the people (and pets!) in your family. You can always add more later.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  {members.map((member, index) => (
-                    <div key={index} className="p-4 border border-gray-200 rounded-lg">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-medium text-gray-900">
-                          Member {index + 1}
-                        </h3>
-                        {members.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeMember(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input
-                          label="Name *"
-                          value={member.name}
-                          onChange={(e) => updateMember(index, 'name', e.target.value)}
-                          placeholder="Enter name"
-                          required
-                        />
-
-                        <Input
-                          label="Nickname"
-                          value={member.nickname || ''}
-                          onChange={(e) => updateMember(index, 'nickname', e.target.value)}
-                          placeholder="Enter nickname (optional)"
-                        />
-
-                        <Select
-                          label="Relationship *"
-                          value={member.relationship}
-                          onChange={(e) => updateMember(index, 'relationship', e.target.value)}
-                          options={relationshipOptions}
-                          required
-                        />
-
-                        <div></div>
-
-                        <FlexibleDateInput
-                          label="Birthday"
-                          value={member.birthday || ''}
-                          onChange={(value) => updateMember(index, 'birthday', value)}
-                          placeholder="MM/DD or MM/DD/YYYY"
-                        />
-
-                        <FlexibleDateInput
-                          label="Anniversary"
-                          value={member.anniversary || ''}
-                          onChange={(value) => updateMember(index, 'anniversary', value)}
-                          placeholder="MM/DD or MM/DD/YYYY"
-                        />
-
-                        <div className="md:col-span-2">
-                          <Input
-                            label="Address"
-                            value={member.address || ''}
-                            onChange={(e) => updateMember(index, 'address', e.target.value)}
-                            placeholder="123 Main St, City, State 12345"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={addMember}
-                    className="w-full"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Another Member
-                  </Button>
-                </div>
-
-                <div className="flex space-x-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setStep(1)}
-                    className="flex-1"
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                    size="lg"
-                    loading={loading}
-                  >
-                    Complete Setup
-                    <CheckCircle className="h-4 w-4 ml-2" />
-                  </Button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  const result = { familyInfo, events, familyMembers, timestamp: Date.now() }
+  queryCache.set(key, result, 3 * 60 * 1000) // 3m
+  t.end()
+  return result
 }
