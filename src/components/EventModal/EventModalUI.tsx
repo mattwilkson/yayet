@@ -57,7 +57,7 @@ interface EventModalUIProps {
   driveTime?: string
   setDriveTime?: (value: string) => void
 
-  // Optional props for recurring event editing
+  // Optional props for recurring event editing (not rendered here)
   isEditing?: boolean
   isRecurringParent?: boolean
   isRecurringInstance?: boolean
@@ -155,12 +155,7 @@ export function EventModalUI({
   if (!isOpen) return null
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={isEditing ? 'Edit Event' : 'Create Event'}
-      size="lg"
-    >
+    <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? 'Edit Event' : 'Create Event'} size="lg">
       <div className="p-6 space-y-6">
         {/* Basic Event Details */}
         <div className="space-y-4">
@@ -173,11 +168,8 @@ export function EventModalUI({
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Start Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Start Date *
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
               <input
                 type="date"
                 value={startDate}
@@ -186,11 +178,8 @@ export function EventModalUI({
                 required
               />
             </div>
-            {/* End Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                End Date *
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
               <input
                 type="date"
                 value={endDate}
@@ -201,4 +190,82 @@ export function EventModalUI({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">... (truncated for brevity)
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                disabled={allDay}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Time *</label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                disabled={allDay}
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="flex items-center">
+              <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
+              <span className="ml-2 text-sm text-gray-700">All day event</span>
+            </label>
+          </div>
+
+          <Input
+            label="Location"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Enter location (optional)"
+          />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Enter description (optional)"
+              rows={3}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Recurring Event Options */}
+        <div>
+          <button
+            type="button"
+            onClick={toggleRecurringOptions}
+            className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            {showRecurringOptions ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}<Repeat className="h-4 w-4 mr-1" />Make this a recurring event
+          </button>
+          {showRecurringOptions && (
+            <div className="mt-3 space-y-4 bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">Recurrence Pattern</label>
+                <select
+                  value={recurrenceType}
+                  onChange={(e) => setRecurrenceType?.(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 p-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                >
+                  <option value="none">None</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-blue-700 mb-1">Repeat every</label>```
