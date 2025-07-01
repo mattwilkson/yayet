@@ -29,6 +29,9 @@ export function useEventModalLogic({
   onSave,
   onDelete
 }: UseEventModalLogicProps) {
+  // safe-guard assignments
+  const safeAssignments = event.event_assignments ?? []
+
   // state
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -43,110 +46,24 @@ export function useEventModalLogic({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const [showRecurringOptions, setShowRecurringOptions] = useState(false)
-  const [recurrenceType, setRecurrenceType] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('none')
-  const [recurrenceInterval, setRecurrenceInterval] = useState(1)
-  const [recurrenceEndType, setRecurrenceEndType] = useState<'count' | 'date'>('count')
-  const [recurrenceEndCount, setRecurrenceEndCount] = useState(10)
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState('')
-  const [selectedDays, setSelectedDays] = useState<string[]>([])
-
-  const [showAdditionalOptions, setShowAdditionalOptions] = useState(false)
-  const [arrivalTime, setArrivalTime] = useState('')
-  const [driveTime, setDriveTime] = useState('')
-
-  const [isEditing, setIsEditing] = useState(false)
-  const [isRecurringParent, setIsRecurringParent] = useState(false)
-  const [isRecurringInstance, setIsRecurringInstance] = useState(false)
-  const [editMode, setEditMode] = useState<'single' | 'all'>('single')
+  /* ...rest of your existing state/hooks... */
 
   // initialize when modal opens or event changes
   useEffect(() => {
-  if (!startDate || !startTime) return
+    if (!isOpen) return
 
-  // 1) mirror the date
-  setEndDate(startDate)
+    /* your existing initialization logic… */
 
-  // 2) parse and bump one hour
-  const parsed = parse(startTime, 'HH:mm', new Date())
-  if (!isValid(parsed)) return
-  let bumped = addHours(parsed, 1)
+    // pull assignments from safeAssignments
+    const assigns = safeAssignments as { family_member_id: string; is_driver_helper: boolean }[]
+    setAssignedMembers(
+      assigns.filter(a => !a.is_driver_helper).map(a => a.family_member_id)
+    )
+    const driver = assigns.find(a => a.is_driver_helper)
+    setDriverHelper(driver?.family_member_id || '')
+  }, [isOpen, event])
 
-  // 3) QoL #3: if start is before noon and +1h wraps back before that hour,
-  //    force it into the PM slot instead.
-  const startHour = parsed.getHours()
-  if (startHour < 12 && bumped.getHours() < startHour) {
-    bumped = addHours(parsed, 13)
-  }
-
-  setEndTime(format(bumped, 'HH:mm'))
-}, [startDate, startTime])
-
-  // QoL #1 & #2: mirror & bump
-  useEffect(() => {
-    if (!startDate || !startTime) return
-    setEndDate(startDate)
-    const parsed = parse(startTime, 'HH:mm', new Date())
-    if (!isValid(parsed)) return
-    setEndTime(format(addHours(parsed, 1), 'HH:mm'))
-  }, [startDate, startTime])
-
-  // QoL #3: auto-bump into PM for morning wrap
-  useEffect(() => {
-    if (!startDate || !startTime) return
-    setEndDate(startDate)
-    const parsed = parse(startTime, 'HH:mm', new Date())
-    if (!isValid(parsed)) return
-    let bumped = addHours(parsed, 1)
-    const startHour = parsed.getHours()
-    if (startHour < 12 && bumped.getHours() < startHour) {
-      bumped = addHours(parsed, 13)
-    }
-    setEndTime(format(bumped, 'HH:mm'))
-  }, [startDate, startTime])
-
-  // QoL #3: manual end-time bump
-  useEffect(() => {
-    if (!startTime || !endTime) return
-    const ps = parse(startTime, 'HH:mm', new Date())
-    const pe = parse(endTime, 'HH:mm', new Date())
-    if (!isValid(ps) || !isValid(pe)) return
-    const sh = ps.getHours(), eh = pe.getHours()
-    if (sh < 12 && eh <= sh) {
-      setEndTime(format(addHours(pe, 12), 'HH:mm'))
-    }
-  }, [startTime, endTime])
-
-  // weekly default day (unchanged)
-  useEffect(() => {
-    if (recurrenceType === 'weekly' && selectedDays.length === 0) {
-      const dt = new Date(`${startDate}T${startTime}`)
-      if (isValid(dt)) {
-        const dow = dt.toLocaleDateString('en-us', { weekday: 'long' }).toLowerCase()
-        setSelectedDays([dow])
-      }
-    }
-  }, [recurrenceType, startDate, startTime])
-
-  // assignment helpers (unchanged)
-
-  // save
-  const handleSave = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      // ...validation & upsert logic (unchanged)
-    } catch (err: any) {
-      setError(err.message || 'Save failed')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // delete
-  const handleDelete = async () => {
-    // ...unchanged delete logic
-  }
+  /* …your existing QoL #3 hooks, save/delete handlers, etc… */
 
   return {
     isOpen,
@@ -155,6 +72,6 @@ export function useEventModalLogic({
     handleDelete,
     loading,
     error,
-    // ...other returned props (unchanged)
+    /* …all your other returned values… */
   }
 }
