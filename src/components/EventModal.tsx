@@ -881,7 +881,7 @@ export const EventModal = ({
           </div>
 
           {/* Recurring Options - Moved here, below all day event and above additional scheduling */}
-          {{}
+          {!isRecurringInstance && (}
             <div>
               <button
                 type="button"
