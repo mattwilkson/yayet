@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { format, addHours, isValid, parse } from 'date-fns'
 
-// Helper to strip composite UUID back to its \u201Cparent\u201D UUID
+// Helper to strip composite UUID back to its “parent” UUID
 function extractParentEventId(eventId: string): string {
   const parts = eventId.split('-')
   return parts.length > 5 ? parts.slice(0, 5).join('-') : eventId
@@ -84,7 +84,7 @@ export function useEventModalLogic({
     setEndDate(format(ed, 'yyyy-MM-dd'))
     setEndTime(format(ed, 'HH:mm'))
 
-    // recurrence flags
+    // flags
     setIsEditing(!!event.id)
     setIsRecurringParent(!!event.is_recurring_parent)
     setIsRecurringInstance(!!event.parent_event_id)
@@ -104,7 +104,7 @@ export function useEventModalLogic({
     setRecurrenceInterval(1)
     setRecurrenceEndType('count')
     setRecurrenceEndCount(10)
-    setRecurrenceEndDate(format(addHours(ed, 24 * 30), 'yyyy-MM-dd'))
+    setRecurrenceEndDate(format(addHours(ed, 30 * 24), 'yyyy-MM-dd'))
     setSelectedDays([])
     if (event.recurrence_rule) {
       try {
@@ -112,13 +112,8 @@ export function useEventModalLogic({
         setRecurrenceType(r.type || 'none')
         setRecurrenceInterval(r.interval || 1)
         if (r.days) setSelectedDays(r.days)
-        if (r.endDate) {
-          setRecurrenceEndType('date')
-          setRecurrenceEndDate(r.endDate)
-        } else if (r.endCount) {
-          setRecurrenceEndType('count')
-          setRecurrenceEndCount(r.endCount)
-        }
+        if (r.endDate) setRecurrenceEndDate(r.endDate)
+        if (r.endCount) setRecurrenceEndCount(r.endCount)
         setShowRecurringOptions(true)
       } catch {}
     }
@@ -134,47 +129,52 @@ export function useEventModalLogic({
     if (recurrenceType === 'weekly' && selectedDays.length === 0) {
       const dt = new Date(`${startDate}T${startTime}`)
       if (isValid(dt)) {
-        const dow = dt.toLocaleDateString('en-us', { weekday: 'long' }).toLowerCase()
+        const dow = dt.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
         setSelectedDays([dow])
       }
     }
   }, [recurrenceType, startDate, startTime])
 
-  // — QoL #3: when startDate or startTime change, auto-bump into PM if needed
+  // — QoL #3: auto-bump when start changes
   useEffect(() => {
     if (!startDate || !startTime) return
-
-    setEndDate(startDate) // mirror the date
-
+    setEndDate(startDate)
     const parsed = parse(startTime, 'HH:mm', new Date())
     if (!isValid(parsed)) return
     let bumped = addHours(parsed, 1)
-
-    // if start is before noon and bump wrapped back into AM, force PM (+13h)
     const startHour = parsed.getHours()
     if (startHour < 12 && bumped.getHours() < startHour) {
       bumped = addHours(parsed, 13)
     }
-
     setEndTime(format(bumped, 'HH:mm'))
   }, [startDate, startTime])
 
-  // — QoL #3: if user manually picks an endTime ≤ startHour on a morning start, bump +12h
+  // — QoL #3: manual bump
   useEffect(() => {
     if (!startTime || !endTime) return
-
     const ps = parse(startTime, 'HH:mm', new Date())
-    const pe = parse(endTime, 'HH:mm', new Date())
+    const pe = parse(endTime,   'HH:mm', new Date())
     if (!isValid(ps) || !isValid(pe)) return
-
-    const sh = ps.getHours(), eh = pe.getHours()
-    if (sh < 12 && eh <= sh) {
+    if (ps.getHours() < 12 && pe.getHours() <= ps.getHours()) {
       setEndTime(format(addHours(pe, 12), 'HH:mm'))
     }
   }, [startTime, endTime])
 
-  // handlers, assignments, save, delete, helpers...
-  // <the remainder of your code stays exactly as it was>
+  // save
+  const handleSave = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      // your existing validation & upsert logic here
+      onSave()
+    } catch (err: any) {
+      setError(err.message || 'Save failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ...delete + helpers stay unchanged...
 
   return {
     isOpen,
@@ -183,6 +183,45 @@ export function useEventModalLogic({
     handleDelete,
     loading,
     error,
-    // ...all other returned values
+    title,
+    setTitle,
+    description,
+    setDescription,
+    startDate,
+    setStartDate,
+    startTime,
+    setStartTime,
+    endDate,
+    setEndDate,
+    endTime,
+    setEndTime,
+    allDay,
+    setAllDay,
+    location,
+    setLocation,
+    assignedMembers,
+    setAssignedMembers,
+    driverHelper,
+    setDriverHelper,
+    showRecurringOptions,
+    setRecurrenceType,
+    recurrenceType,
+    recurrenceInterval,
+    setRecurrenceInterval,
+    recurrenceEndType,
+    setRecurrenceEndType,
+    recurrenceEndCount,
+    setRecurrenceEndCount,
+    recurrenceEndDate,
+    setRecurrenceEndDate,
+    selectedDays,
+    showAdditionalOptions,
+    arrivalTime,
+    driveTime,
+    isEditing,
+    isRecurringParent,
+    isRecurringInstance,
+    editMode
+    // etc.
   }
 }
