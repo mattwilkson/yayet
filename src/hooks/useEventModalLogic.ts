@@ -228,32 +228,6 @@ export function useEventModalLogic({
     await createEventAssignments(eid, members, driver)
   }
 
-  // ─────────────── SAVE & DELETE ───────────────
-
-const handleSave = async () => {
-  setLoading(true)
-  setError('')
-  try {
-    // …all your existing validation & supabase insert/update logic…
-  } catch (err: any) {
-    setError(err.message || 'Save failed')
-  } finally {
-    setLoading(false)
-  }
-}
-
-const handleDelete = async () => {
-  if (!window.confirm('Delete this event?')) return
-  setLoading(true)
-  setError('')
-  try {
-    // …all your existing delete logic…
-  } catch (err: any) {
-    setError(err.message || 'Delete failed')
-  } finally {
-    setLoading(false)
-  }
-}
 
   // save
   const handleSave = async () => {
