@@ -194,7 +194,7 @@ export function EventModalUI({
               <div>
                 <label className="block text-sm font-medium text-blue-700 mb-1">Recurrence Pattern</label>
                 <select value={recurrenceType} onChange={e => setRecurrenceType?.(e.target.value)} className="w-full rounded-lg border border-gray-300 p-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                  <option value="none">None</optiione>
+                  <option value="none">None</optione>
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
