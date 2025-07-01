@@ -62,10 +62,25 @@ export function useEventModalLogic({
 
   // initialize when modal opens or event changes
   useEffect(() => {
-    if (!isOpen) return
+  if (!startDate || !startTime) return
 
-    // ...existing initialization (no changes)
-  }, [isOpen, event])
+  // 1) mirror the date
+  setEndDate(startDate)
+
+  // 2) parse and bump one hour
+  const parsed = parse(startTime, 'HH:mm', new Date())
+  if (!isValid(parsed)) return
+  let bumped = addHours(parsed, 1)
+
+  // 3) QoL #3: if start is before noon and +1h wraps back before that hour,
+  //    force it into the PM slot instead.
+  const startHour = parsed.getHours()
+  if (startHour < 12 && bumped.getHours() < startHour) {
+    bumped = addHours(parsed, 13)
+  }
+
+  setEndTime(format(bumped, 'HH:mm'))
+}, [startDate, startTime])
 
   // QoL #1 & #2: mirror & bump
   useEffect(() => {
