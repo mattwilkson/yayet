@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { format, addHours, isValid, parse } from 'date-fns'
 
-// Helper to strip composite UUID back to its “parent” UUID
+// Helper to strip composite UUID back to its "parent" UUID
 function extractParentEventId(eventId: string): string {
   const parts = eventId.split('-')
   return parts.length > 5 ? parts.slice(0, 5).join('-') : eventId
@@ -29,13 +29,19 @@ export function useEventModalLogic({
   onSave,
   onDelete
 }: UseEventModalLogicProps) {
+  // Initialize with valid default date/time values
+  const now = new Date()
+  const defaultStart = new Date(now)
+  defaultStart.setHours(9, 0, 0, 0)
+  const defaultEnd = addHours(defaultStart, 1)
+
   // state
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [endTime, setEndTime] = useState('')
+  const [startDate, setStartDate] = useState(format(defaultStart, 'yyyy-MM-dd'))
+  const [startTime, setStartTime] = useState(format(defaultStart, 'HH:mm'))
+  const [endDate, setEndDate] = useState(format(defaultEnd, 'yyyy-MM-dd'))
+  const [endTime, setEndTime] = useState(format(defaultEnd, 'HH:mm'))
   const [allDay, setAllDay] = useState(false)
   const [location, setLocation] = useState('')
   const [assignedMembers, setAssignedMembers] = useState<string[]>([])
