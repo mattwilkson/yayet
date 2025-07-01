@@ -37,7 +37,6 @@ export function CustomEventModal({
   // wire up all the logic
   const {
     // modal control
-    isOpen: open,
     onClose: close,
     // save/delete handlers from hook
     handleSave,
@@ -87,7 +86,7 @@ export function CustomEventModal({
 
   return (
     <EventModalUI
-      isOpen={open}
+      isOpen={isOpen}
       onClose={close}
       onSave={handleSave}
       onDelete={handleDelete}

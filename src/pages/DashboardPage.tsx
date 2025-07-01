@@ -66,6 +66,12 @@ export default function DashboardPage() {
   // Compute the event object to pass into the modal:
   let eventModalData: any
   if (selectedEvent) {
+    console.log('📅 Using selected event for modal:', {
+      id: selectedEvent.id,
+      title: selectedEvent.title,
+      start_time: selectedEvent.start_time,
+      end_time: selectedEvent.end_time
+    })
     eventModalData = selectedEvent
   } else if (newEventData) {
     console.log('📅 Creating new event with data:', {
@@ -86,6 +92,12 @@ export default function DashboardPage() {
     defaultStart.setHours(9, 0, 0, 0)
     const defaultEnd = new Date(defaultStart)
     defaultEnd.setHours(10, 0, 0, 0)
+    
+    console.log('📅 Using default event times for modal:', {
+      start: defaultStart.toISOString(),
+      end: defaultEnd.toISOString()
+    })
+    
     eventModalData = {
       title: '',
       description: '',
@@ -98,6 +110,7 @@ export default function DashboardPage() {
 
   const handleEventClick = (evt: any) => {
     if (evt.isHoliday || evt.isSpecialEvent) return
+    console.log('📅 Event clicked:', { id: evt.id, title: evt.title })
     setSelectedEvent(evt)
     setNewEventData(null)
     setShowEventModal(true)
@@ -117,18 +130,21 @@ export default function DashboardPage() {
   }
   
   const handleEventModalClose = () => {
+    console.log('📅 Closing event modal')
     setShowEventModal(false)
     setSelectedEvent(null)
     setNewEventData(null)
   }
   
   const handleEventSave = async () => {
+    console.log('📅 Saving event')
     cacheUtils.clearFamily(userProfile.family_id!)
     await fetchData()
     handleEventModalClose()
   }
   
   const handleEventDelete = async () => {
+    console.log('📅 Deleting event')
     cacheUtils.clearFamily(userProfile.family_id!)
     await fetchData()
     handleEventModalClose()
@@ -151,6 +167,14 @@ export default function DashboardPage() {
   const nonHolidayEvents = events.filter(e => !e.isHoliday && !e.isSpecialEvent)
   const holidayCount = events.filter(e => e.isHoliday).length
   const specialCount = events.filter(e => e.isSpecialEvent).length
+
+  console.log('📅 DashboardPage render state:', {
+    showEventModal,
+    hasSelectedEvent: !!selectedEvent,
+    hasNewEventData: !!newEventData,
+    eventModalDataTitle: eventModalData?.title || '(new event)',
+    eventModalDataStartTime: eventModalData?.start_time
+  })
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

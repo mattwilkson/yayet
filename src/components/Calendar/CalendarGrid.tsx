@@ -90,6 +90,22 @@ export const CalendarGrid = ({
       })
     : timedEvents
 
+  // Get all events to show in all-day section for simplified view
+  const allDayDisplayEvents = isSimplified 
+    ? [...allDayEvents, ...timedEvents.filter(event => {
+        // For simplified view, also show long events (> 60 min) in all-day section
+        // UNLESS they are drive time/arrival time sub-events
+        if (event.all_day) return false // Already included in allDayEvents
+        
+        const duration = new Date(event.end_time).getTime() - new Date(event.start_time).getTime()
+        const durationMinutes = duration / (1000 * 60)
+        const isDriveTimeEvent = event.title?.startsWith('🚗 ') || event.title?.includes(' - Drive Time')
+        
+        // Long events that aren't drive time events go in all-day section
+        return durationMinutes > 60 && !isDriveTimeEvent
+      })]
+    : allDayEvents
+
   // Calculate current time position
   const getCurrentTimePosition = () => {
     if (!isToday(date) && viewType === 'daily') return null
@@ -289,13 +305,13 @@ export const CalendarGrid = ({
   return (
     <div className="flex flex-col h-full">
       {/* All-day events section */}
-      {allDayEvents.length > 0 && (
+      {allDayDisplayEvents.length > 0 && (
         <div className="border-b border-gray-200 bg-gray-50 p-4">
           <h3 className="text-sm font-medium text-gray-700 mb-2">
             {isSimplified ? 'All Events' : 'All Day'}
           </h3>
           <div className="space-y-1">
-            {allDayEvents
+            {allDayDisplayEvents
               .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
               .map(event => (
                 <EventBlock
