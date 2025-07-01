@@ -194,7 +194,7 @@ export function EventModalUI({
               <div>
                 <label className="block text-sm font-medium text-blue-700 mb-1">Recurrence Pattern</label>
                 <select value={recurrenceType} onChange={e => setRecurrenceType?.(e.target.value)} className="w-full rounded-lg border border-gray-300 p-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-                  <option value="none">None</optione>
+                  <option value="none">None</option>
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
@@ -258,7 +258,7 @@ export function EventModalUI({
                 <label className="block text-sm font-medium text-blue-700 mb-1">How long is the drive? (minutes)</label>
                 <div className="flex items-center gap-2">
                   <input type="number" min={1} max={180} value={driveTime} onChange={e => setDriveTime?.(e.target.value)} className="w-24 rounded-lg border border-gray-300 p-2 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
-                  <span className="text-xs text-blue-600">Creates a 🚗 “Drive Time” event before arrival/start time</span>
+                  <span className="text-xs text-blue-600">Creates a 🚗 "Drive Time" event before arrival/start time</span>
                 </div>
                 <ul className="mt-2 list-disc list-inside text-xs text-gray-600">
                   <li><strong>Arrival Time:</strong> Event slot between arrival & start.</li>
