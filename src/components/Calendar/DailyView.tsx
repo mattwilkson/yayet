@@ -11,6 +11,13 @@ interface DailyViewProps {
 }
 
 export const DailyView = ({ currentDate, events, onEventClick, onCreateEvent, isSimplified = false }: DailyViewProps) => {
+  console.log('🔧 DailyView render:', {
+    hasOnCreateEvent: !!onCreateEvent,
+    eventsCount: events.length,
+    currentDate: currentDate.toISOString(),
+    isSimplified
+  })
+
   return (
     <div className="h-full flex flex-col">
       {/* Daily header with date on top */}

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Button } from '../ui/Button'
-import { format } from 'date-fns'
+import { format, isValid } from 'date-fns'
 
 interface EventModalUIProps {
   isOpen: boolean
@@ -32,6 +32,21 @@ export function EventModalUI({
   if (!isOpen) return null
 
   const safeAssignments = assignedMembers ?? []
+  
+  // Safely format dates to prevent "Invalid time value" errors
+  const formatSafeDate = (dateStr: string, timeStr: string) => {
+    try {
+      const dateTimeStr = `${dateStr}T${timeStr}`
+      const date = new Date(dateTimeStr)
+      return isValid(date) ? format(date, 'PPpp') : 'Invalid date'
+    } catch (error) {
+      console.error('Error formatting date:', error, { dateStr, timeStr })
+      return 'Invalid date'
+    }
+  }
+
+  const startDateFormatted = formatSafeDate(startDate, startTime)
+  const endDateFormatted = formatSafeDate(endDate, endTime)
 
   return (
     <div className="modal-backdrop">
@@ -39,8 +54,7 @@ export function EventModalUI({
         <h2>{title || 'New event'}</h2>
         <p>{description}</p>
         <p>
-          {format(new Date(`${startDate}T${startTime}`), 'PPpp')} –{' '}
-          {format(new Date(`${endDate}T${endTime}`), 'PPpp')}
+          {startDateFormatted} – {endDateFormatted}
         </p>
         <h3>Assigned</h3>
         <ul>

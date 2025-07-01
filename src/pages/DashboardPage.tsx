@@ -1,5 +1,3 @@
-// File: src/pages/DashboardPage.tsx
-
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { fetchOptimizedDashboardData, cacheUtils } from '../lib/optimizedQueries'
@@ -70,6 +68,11 @@ export default function DashboardPage() {
   if (selectedEvent) {
     eventModalData = selectedEvent
   } else if (newEventData) {
+    console.log('📅 Creating new event with data:', {
+      startTime: newEventData.startTime.toISOString(),
+      endTime: newEventData.endTime.toISOString()
+    })
+    
     eventModalData = {
       title: '',
       description: '',
@@ -99,26 +102,38 @@ export default function DashboardPage() {
     setNewEventData(null)
     setShowEventModal(true)
   }
+  
   const handleCreateEvent = (startTime: Date, endTime: Date) => {
-    setSelectedEvent(null)
-    setNewEventData({ startTime, endTime })
+    console.log('📅 DashboardPage.handleCreateEvent called:', { 
+      startTime: startTime.toISOString(), 
+      endTime: endTime.toISOString(),
+      currentDate: currentDate.toISOString(),
+      source: 'calendar_click'
+    })
+    
+    setSelectedEvent(null) // Clear any selected event
+    setNewEventData({ startTime, endTime }) // ✅ STORING THE CLICKED TIMES
     setShowEventModal(true)
   }
+  
   const handleEventModalClose = () => {
     setShowEventModal(false)
     setSelectedEvent(null)
     setNewEventData(null)
   }
+  
   const handleEventSave = async () => {
     cacheUtils.clearFamily(userProfile.family_id!)
     await fetchData()
     handleEventModalClose()
   }
+  
   const handleEventDelete = async () => {
     cacheUtils.clearFamily(userProfile.family_id!)
     await fetchData()
     handleEventModalClose()
   }
+  
   const handleExportCalendar = () => {
     const toExport = events.filter(e => !e.isHoliday && !e.isSpecialEvent)
     const ical = generateICalendar(toExport)
@@ -126,6 +141,7 @@ export default function DashboardPage() {
     const filename = `${famName}_${viewMode === 'personal' ? 'personal' : 'family'}_calendar.ics`
     downloadFile(ical, filename, 'text/calendar')
   }
+  
   const handleRefreshData = async () => {
     cacheUtils.clearFamily(userProfile.family_id!)
     await fetchData()
@@ -182,7 +198,11 @@ export default function DashboardPage() {
               </Button>
               <Button
                 size="sm"
-                onClick={() => handleCreateEvent(new Date(), new Date(new Date().getTime() + 3600_000))}
+                onClick={() => {
+                  const now = new Date();
+                  const oneHourLater = new Date(now.getTime() + 3600000);
+                  handleCreateEvent(now, oneHourLater);
+                }}
               >
                 <Plus className="h-4 w-4 mr-2" /> New Event
               </Button>

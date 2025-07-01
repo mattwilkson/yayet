@@ -11,14 +11,20 @@ interface WeeklyViewProps {
   isSimplified?: boolean
 }
 
-export const WeeklyView = ({ currentWeek, events, onEventClick, onCreateEvent, isSimplified = false }: WeeklyViewProps) => {
+export const WeeklyView = ({ 
+  currentWeek, 
+  events, 
+  onEventClick, 
+  onCreateEvent,
+  isSimplified = false 
+}: WeeklyViewProps) => {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState<{ time: Date; y: number; dayIndex: number } | null>(null)
   const [dragEnd, setDragEnd] = useState<{ time: Date; y: number; dayIndex: number } | null>(null)
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
-  const weekStart = startOfWeek(currentWeek)
+  const weekStart  = startOfWeek(currentWeek)
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
   console.log('🔧 WeeklyView render:', {

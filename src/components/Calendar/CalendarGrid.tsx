@@ -27,6 +27,14 @@ export const CalendarGrid = ({
   const gridRef = useRef<HTMLDivElement>(null)
   const currentTimeRef = useRef<HTMLDivElement>(null)
 
+  console.log('🔧 CalendarGrid render:', {
+    hasOnCreateEvent: !!onCreateEvent,
+    viewType,
+    eventsCount: events.length,
+    date: date.toISOString(),
+    isSimplified
+  })
+
   // Update current time every minute
   useEffect(() => {
     const interval = setInterval(() => {
@@ -129,15 +137,36 @@ export const CalendarGrid = ({
 
   // Handle mouse events for creating new events
   const handleMouseDown = (e: React.MouseEvent) => {
+    console.log('🖱️ CalendarGrid.handleMouseDown called:', {
+      button: e.button,
+      hasOnCreateEvent: !!onCreateEvent,
+      target: (e.target as HTMLElement).tagName,
+      targetClass: (e.target as HTMLElement).className
+    })
+    
     // Only handle left mouse button and if onCreateEvent is provided
-    if (e.button !== 0 || !onCreateEvent) return
+    if (e.button !== 0 || !onCreateEvent) {
+      console.log('🖱️ Ignoring mouse down - wrong button or no onCreateEvent')
+      return
+    }
     
     // Don't start drag if clicking on an existing event
-    if ((e.target as HTMLElement).closest('[data-event-id]')) return
+    if ((e.target as HTMLElement).closest('[data-event-id]')) {
+      console.log('🖱️ Ignoring mouse down - clicked on existing event')
+      return
+    }
     
     const rect = e.currentTarget.getBoundingClientRect()
     const y = e.clientY - rect.top
     const time = getTimeFromY(y)
+    
+    console.log('🖱️ CalendarGrid click details:', {
+      time: time.toTimeString(),
+      clickedTime: time.toISOString(),
+      rect: { top: rect.top, left: rect.left },
+      clientY: e.clientY,
+      relativeY: y
+    })
     
     setIsDragging(true)
     setDragStart({ time, y })
@@ -158,7 +187,20 @@ export const CalendarGrid = ({
   }
 
   const handleMouseUp = (e: React.MouseEvent) => {
-    if (!isDragging || !dragStart || !dragEnd || !onCreateEvent) return
+    console.log('🖱️ CalendarGrid.handleMouseUp called:', {
+      isDragging,
+      hasDragStart: !!dragStart,
+      hasDragEnd: !!dragEnd,
+      hasOnCreateEvent: !!onCreateEvent
+    })
+    
+    if (!isDragging || !dragStart || !dragEnd || !onCreateEvent) {
+      console.log('🖱️ No drag or missing data, resetting state')
+      setIsDragging(false)
+      setDragStart(null)
+      setDragEnd(null)
+      return
+    }
     
     const startTime = dragStart.time < dragEnd.time ? dragStart.time : dragEnd.time
     const endTime = dragStart.time < dragEnd.time ? dragEnd.time : dragStart.time
@@ -166,6 +208,11 @@ export const CalendarGrid = ({
     // Ensure minimum 30-minute duration
     const minEndTime = addMinutes(startTime, 30)
     const finalEndTime = endTime < minEndTime ? minEndTime : endTime
+    
+    console.log('📅 Creating event from CalendarGrid:', {
+      startTime: startTime.toISOString(),
+      endTime: finalEndTime.toISOString()
+    })
     
     // Create the event
     onCreateEvent(startTime, finalEndTime)
