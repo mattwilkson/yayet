@@ -70,6 +70,8 @@ export function useEventModalLogic({
   useEffect(() => {
     if (!isOpen) return
 
+    console.log('🔄 useEventModalLogic initializing with event:', event)
+
     setTitle(event.title || '')
     setDescription(event.description || '')
     setAllDay(event.all_day || false)
@@ -78,12 +80,33 @@ export function useEventModalLogic({
     // parse dates
     let sd = new Date(), ed = new Date()
     if (event.start_time && event.end_time) {
-      sd = new Date(event.start_time)
-      ed = new Date(event.end_time)
+      try {
+        sd = new Date(event.start_time)
+        ed = new Date(event.end_time)
+        
+        if (!isValid(sd) || !isValid(ed)) {
+          console.warn('Invalid date detected in event:', { 
+            start: event.start_time, 
+            end: event.end_time,
+            isStartValid: isValid(sd),
+            isEndValid: isValid(ed)
+          })
+          
+          // Fall back to defaults
+          sd = defaultStart
+          ed = defaultEnd
+        }
+      } catch (error) {
+        console.error('Error parsing event dates:', error)
+        // Fall back to defaults
+        sd = defaultStart
+        ed = defaultEnd
+      }
     } else {
-      sd.setHours(9, 0, 0, 0)
-      ed = addHours(sd, 1)
+      sd = defaultStart
+      ed = defaultEnd
     }
+    
     setStartDate(format(sd, 'yyyy-MM-dd'))
     setStartTime(format(sd, 'HH:mm'))
     setEndDate(format(ed, 'yyyy-MM-dd'))
@@ -124,7 +147,9 @@ export function useEventModalLogic({
           setRecurrenceEndCount(r.endCount)
         }
         setShowRecurringOptions(true)
-      } catch {}
+      } catch (error) {
+        console.error('Error parsing recurrence rule:', error)
+      }
     }
 
     setShowAdditionalOptions(false)
@@ -137,37 +162,49 @@ export function useEventModalLogic({
     if (!startDate || !startTime) return
 
     setEndDate(startDate)
-    const parsed = parse(startTime, 'HH:mm', new Date())
-    if (!isValid(parsed)) return
-    let bumped = addHours(parsed, 1)
+    try {
+      const parsed = parse(startTime, 'HH:mm', new Date())
+      if (!isValid(parsed)) return
+      let bumped = addHours(parsed, 1)
 
-    const startHour = parsed.getHours()
-    if (startHour < 12 && bumped.getHours() < startHour) {
-      bumped = addHours(parsed, 13)
+      const startHour = parsed.getHours()
+      if (startHour < 12 && bumped.getHours() < startHour) {
+        bumped = addHours(parsed, 13)
+      }
+
+      setEndTime(format(bumped, 'HH:mm'))
+    } catch (error) {
+      console.error('Error updating end time based on start time:', error)
     }
-
-    setEndTime(format(bumped, 'HH:mm'))
   }, [startDate, startTime])
 
   // QoL #3: if user picks endTime <= start on morning start, bump +12h
   useEffect(() => {
     if (!startTime || !endTime) return
-    const ps = parse(startTime, 'HH:mm', new Date())
-    const pe = parse(endTime, 'HH:mm', new Date())
-    if (!isValid(ps) || !isValid(pe)) return
-    const sh = ps.getHours(), eh = pe.getHours()
-    if (sh < 12 && eh <= sh) {
-      setEndTime(format(addHours(pe, 12), 'HH:mm'))
+    try {
+      const ps = parse(startTime, 'HH:mm', new Date())
+      const pe = parse(endTime, 'HH:mm', new Date())
+      if (!isValid(ps) || !isValid(pe)) return
+      const sh = ps.getHours(), eh = pe.getHours()
+      if (sh < 12 && eh <= sh) {
+        setEndTime(format(addHours(pe, 12), 'HH:mm'))
+      }
+    } catch (error) {
+      console.error('Error adjusting end time:', error)
     }
   }, [startTime, endTime])
 
   // weekly default day
   useEffect(() => {
     if (recurrenceType === 'weekly' && selectedDays.length === 0) {
-      const dt = new Date(`${startDate}T${startTime}`)
-      if (isValid(dt)) {
-        const dow = dt.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
-        setSelectedDays([dow])
+      try {
+        const dt = new Date(`${startDate}T${startTime}`)
+        if (isValid(dt)) {
+          const dow = dt.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
+          setSelectedDays([dow])
+        }
+      } catch (error) {
+        console.error('Error setting default day for weekly recurrence:', error)
       }
     }
   }, [recurrenceType, startDate, startTime])
@@ -197,9 +234,21 @@ export function useEventModalLogic({
     setError('')
     try {
       if (!title.trim()) throw new Error('Title is required')
-      const sd = new Date(`${startDate}T${startTime}`)
-      const ed = new Date(`${endDate}T${endTime}`)
-      if (!isValid(sd) || !isValid(ed)) throw new Error('Invalid date/time')
+      
+      // Validate dates and times
+      let sd: Date, ed: Date
+      try {
+        sd = new Date(`${startDate}T${startTime}`)
+        ed = new Date(`${endDate}T${endTime}`)
+        
+        if (!isValid(sd) || !isValid(ed)) {
+          throw new Error('Invalid date/time format')
+        }
+      } catch (error) {
+        console.error('Date validation error:', error, { startDate, startTime, endDate, endTime })
+        throw new Error('Invalid date or time')
+      }
+      
       if (ed < sd) throw new Error('End must be after start')
       if (recurrenceType === 'weekly' && selectedDays.length === 0) throw new Error('Select at least one day')
 
@@ -253,6 +302,7 @@ export function useEventModalLogic({
 
       onSave()
     } catch (err: any) {
+      console.error('Error saving event:', err)
       setError(err.message || 'Save failed')
     } finally {
       setLoading(false)
@@ -275,10 +325,103 @@ export function useEventModalLogic({
       }
       onDelete()
     } catch (err: any) {
+      console.error('Error deleting event:', err)
       setError(err.message || 'Delete failed')
     } finally {
       setLoading(false)
     }
+  }
+
+  // Toggle functions
+  const toggleRecurringOptions = () => {
+    setShowRecurringOptions(!showRecurringOptions)
+  }
+
+  const toggleAdditionalOptions = () => {
+    setShowAdditionalOptions(!showAdditionalOptions)
+  }
+
+  const handleDayToggle = (day: string) => {
+    if (selectedDays.includes(day)) {
+      setSelectedDays(selectedDays.filter(d => d !== day))
+    } else {
+      setSelectedDays([...selectedDays, day])
+    }
+  }
+
+  // Filter family members for assignment - only immediate family
+  const assignableFamilyMembers = familyMembers.filter(member => 
+    member.category === 'immediate_family'
+  )
+
+  // Filter family members for driver/helper role
+  const driverHelperFamilyMembers = familyMembers.filter(member => {
+    // Include all extended family and caregivers
+    if (member.category === 'extended_family' || member.category === 'caregiver') {
+      return true
+    }
+    
+    // For immediate family, check age if birthday is available
+    if (member.category === 'immediate_family') {
+      // If no birthday, assume Mother and Father are above 16
+      if (!member.birthday) {
+        return member.relationship === 'Mother' || member.relationship === 'Father'
+      }
+      
+      // If birthday is available, check if they're above 16
+      try {
+        // Handle both MM/DD/YYYY and MM/DD formats
+        let birthYear
+        const parts = member.birthday.split('/')
+        
+        if (parts.length === 3) {
+          // MM/DD/YYYY format
+          birthYear = parseInt(parts[2])
+        } else {
+          // For MM/DD format, we can't determine age
+          return member.relationship === 'Mother' || member.relationship === 'Father'
+        }
+        
+        const currentYear = new Date().getFullYear()
+        return (currentYear - birthYear) >= 16
+      } catch (error) {
+        // If there's an error parsing the birthday, default to Mother/Father
+        return member.relationship === 'Mother' || member.relationship === 'Father'
+      }
+    }
+    
+    return false
+  })
+
+  const getDisplayName = (member: any) => {
+    return member.nickname && member.nickname.trim() ? member.nickname : member.name
+  }
+
+  // Get day letter from day name
+  const getDayLetter = (day: string): string => {
+    const dayMap: Record<string, string> = {
+      'sunday': 'S',
+      'monday': 'M',
+      'tuesday': 'T',
+      'wednesday': 'W',
+      'thursday': 'T',
+      'friday': 'F',
+      'saturday': 'S'
+    }
+    return dayMap[day] || day.charAt(0).toUpperCase()
+  }
+
+  // Get selected days summary text
+  const getSelectedDaysSummary = (): string => {
+    if (selectedDays.length === 0) return 'No days selected'
+    
+    // Sort days in week order (Sunday to Saturday)
+    const dayOrder = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    const sortedDays = [...selectedDays].sort((a, b) => 
+      dayOrder.indexOf(a) - dayOrder.indexOf(b)
+    )
+    
+    return sortedDays.map(day => day.charAt(0).toUpperCase() + day.slice(1)).join(', ')
   }
 
   return {
@@ -309,7 +452,7 @@ export function useEventModalLogic({
     driverHelper,
     setDriverHelper,
     showRecurringOptions,
-    setShowRecurringOptions,
+    toggleRecurringOptions,
     recurrenceType,
     setRecurrenceType,
     recurrenceInterval,
@@ -321,9 +464,9 @@ export function useEventModalLogic({
     recurrenceEndDate,
     setRecurrenceEndDate,
     selectedDays,
-    setSelectedDays,
+    handleDayToggle,
     showAdditionalOptions,
-    setShowAdditionalOptions,
+    toggleAdditionalOptions,
     arrivalTime,
     setArrivalTime,
     driveTime,
@@ -332,6 +475,11 @@ export function useEventModalLogic({
     isRecurringParent,
     isRecurringInstance,
     editMode,
-    setEditMode
+    setEditMode,
+    assignableFamilyMembers,
+    driverHelperFamilyMembers,
+    getDisplayName,
+    getDayLetter,
+    getSelectedDaysSummary
   }
 }

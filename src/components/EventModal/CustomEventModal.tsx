@@ -26,6 +26,14 @@ export function CustomEventModal({
   onSave,
   onDelete
 }: CustomEventModalProps) {
+  console.log('🔧 CustomEventModal render:', {
+    isOpen,
+    hasEvent: !!event,
+    eventTitle: event?.title,
+    eventStartTime: event?.start_time,
+    eventEndTime: event?.end_time
+  })
+
   // wire up all the logic
   const {
     // modal control

@@ -201,6 +201,10 @@ export default function DashboardPage() {
                 onClick={() => {
                   const now = new Date();
                   const oneHourLater = new Date(now.getTime() + 3600000);
+                  console.log('📅 New Event button clicked, creating event:', {
+                    startTime: now.toISOString(),
+                    endTime: oneHourLater.toISOString()
+                  });
                   handleCreateEvent(now, oneHourLater);
                 }}
               >
