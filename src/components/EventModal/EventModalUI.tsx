@@ -144,7 +144,7 @@ export function EventModalUI({
 
         <h3 className="font-medium">Assignments</h3>
         <div className="grid grid-cols-2 gap-2">
-          {familyOptions.map(m => (
+          {familyOptions ?? []).map(m => (
             <label key={m.id} className="inline-flex items-center">
               <input
                 type="checkbox"
@@ -170,7 +170,7 @@ export function EventModalUI({
             onChange={e => onChangeField('driverHelper', e.target.value)}
           >
             <option value="">(none)</option>
-            {familyOptions.map(m => (
+            {familyOptions ?? []).map(m => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
