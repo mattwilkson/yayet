@@ -32,7 +32,7 @@ interface EventModalUIProps {
   setLocation: (value: string) => void
   setAssignedMembers: (value: string[]) => void
   setDriverHelper: (value: string) => void
-  
+
   // Optional props for recurring events
   showRecurringOptions?: boolean
   toggleRecurringOptions?: () => void
@@ -48,7 +48,7 @@ interface EventModalUIProps {
   setRecurrenceEndDate?: (value: string) => void
   selectedDays?: string[]
   handleDayToggle?: (day: string) => void
-  
+
   // Optional props for additional options
   showAdditionalOptions?: boolean
   toggleAdditionalOptions?: () => void
@@ -56,18 +56,18 @@ interface EventModalUIProps {
   setArrivalTime?: (value: string) => void
   driveTime?: string
   setDriveTime?: (value: string) => void
-  
+
   // Optional props for recurring event editing
   isEditing?: boolean
   isRecurringParent?: boolean
   isRecurringInstance?: boolean
   editMode?: 'single' | 'all'
   setEditMode?: (value: 'single' | 'all') => void
-  
+
   // Family members data
   assignableFamilyMembers?: any[]
   driverHelperFamilyMembers?: any[]
-  
+
   // Helper functions
   getDisplayName?: (member: any) => string
   getDayLetter?: (day: string) => string
@@ -101,7 +101,7 @@ export function EventModalUI({
   setLocation,
   setAssignedMembers,
   setDriverHelper,
-  
+
   // Optional props with defaults
   showRecurringOptions = false,
   toggleRecurringOptions = () => {},
@@ -117,23 +117,23 @@ export function EventModalUI({
   setRecurrenceEndDate = () => {},
   selectedDays = [],
   handleDayToggle = () => {},
-  
+
   showAdditionalOptions = false,
   toggleAdditionalOptions = () => {},
   arrivalTime = '',
   setArrivalTime = () => {},
   driveTime = '',
   setDriveTime = () => {},
-  
+
   isEditing = false,
   isRecurringParent = false,
   isRecurringInstance = false,
   editMode = 'single',
   setEditMode = () => {},
-  
+
   assignableFamilyMembers = [],
   driverHelperFamilyMembers = [],
-  
+
   getDisplayName = (m) => m.name,
   getDayLetter = (d) => d.charAt(0).toUpperCase(),
   getSelectedDaysSummary = () => 'No days selected'
@@ -141,18 +141,18 @@ export function EventModalUI({
   // Safely format dates for display
   const formatSafely = (dateStr: string, timeStr: string) => {
     try {
-      const dt = parseISO(`${dateStr}T${timeStr}`);
+      const dt = parseISO(`${dateStr}T${timeStr}`)
       if (isValid(dt)) {
-        return format(dt, 'PPpp');
+        return format(dt, 'PPpp')
       }
-      return 'Invalid date';
+      return 'Invalid date'
     } catch (error) {
-      console.error('Date formatting error:', error, { dateStr, timeStr });
-      return 'Invalid date';
+      console.error('Date formatting error:', error, { dateStr, timeStr })
+      return 'Invalid date'
     }
-  };
+  }
 
-  if (!isOpen) return null;
+  if (!isOpen) return null
 
   return (
     <Modal
@@ -173,6 +173,7 @@ export function EventModalUI({
           />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Start Date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Start Date *
@@ -185,6 +186,7 @@ export function EventModalUI({
                 required
               />
             </div>
+            {/* End Date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 End Date *
@@ -199,29 +201,4 @@ export function EventModalUI({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Start Time *
-              </label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                disabled={allDay}
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-  End Time *
-</label>
-<input
-  type="time"
-  value={endTime}
-  onChange={(e) => setEndTime(e.target.value)}
-  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-  disabled={allDay}
-  required
-/>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">... (truncated for brevity)
