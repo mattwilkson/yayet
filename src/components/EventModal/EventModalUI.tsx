@@ -215,9 +215,9 @@ export function EventModalUI({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                End Time *
-              </label>
-             <input
+  End Time *
+</label>
+<input
   type="time"
   value={endTime}
   onChange={(e) => setEndTime(e.target.value)}
