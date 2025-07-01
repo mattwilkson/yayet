@@ -1,376 +1,256 @@
+// File: src/components/EventModal/EventModalUI.tsx
 import React from 'react'
+import { format, parseISO, isValid } from 'date-fns'
 import { Button } from '../ui/Button'
-import { format, isValid } from 'date-fns'
+import { 
+  Checkbox, 
+  Input, 
+  Select, 
+  Textarea 
+} from '../ui/Forms'
+
+interface Assignment {
+  family_member_id: string
+  is_driver_helper: boolean
+}
 
 interface EventModalUIProps {
-  isOpen: boolean
-  onClose: () => void
+  title: string
+  description: string
+  startDate: string
+  startTime: string
+  endDate: string
+  endTime: string
+  allDay: boolean
+  location: string
+  assignedMembers: string[]
+  driverHelper: string
+  recurrenceType: 'none'|'daily'|'weekly'|'monthly'|'yearly'
+  recurrenceInterval: number
+  selectedDays: string[]
+  recurrenceEndType: 'count'|'date'
+  recurrenceEndCount: number
+  recurrenceEndDate: string
+  onChangeField: (field: string, value: any) => void
+  onToggleDay: (day: string) => void
   onSave: () => void
   onDelete: () => void
-  loading: boolean
-  error: string
-  
-  title: string
-  setTitle: (value: string) => void
-  description: string
-  setDescription: (value: string) => void
-  
-  startDate: string
-  setStartDate: (value: string) => void
-  startTime: string
-  setStartTime: (value: string) => void
-  endDate: string
-  setEndDate: (value: string) => void
-  endTime: string
-  setEndTime: (value: string) => void
-  
-  allDay: boolean
-  setAllDay: (value: boolean) => void
-  
-  location: string
-  setLocation: (value: string) => void
-  
-  assignedMembers: string[]
-  setAssignedMembers: (value: string[]) => void
-  driverHelper: string
-  setDriverHelper: (value: string) => void
-  
-  showRecurringOptions: boolean
-  toggleRecurringOptions: () => void
-  recurrenceType: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
-  setRecurrenceType: (value: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly') => void
-  recurrenceInterval: number
-  setRecurrenceInterval: (value: number) => void
-  recurrenceEndDate: string
-  setRecurrenceEndDate: (value: string) => void
-  recurrenceEndCount: number
-  setRecurrenceEndCount: (value: number) => void
-  recurrenceEndType: 'count' | 'date'
-  setRecurrenceEndType: (value: 'count' | 'date') => void
-  selectedDays: string[]
-  handleDayToggle: (day: string) => void
-  
-  showAdditionalOptions: boolean
-  toggleAdditionalOptions: () => void
-  arrivalTime: string
-  setArrivalTime: (value: string) => void
-  driveTime: string
-  setDriveTime: (value: string) => void
-  
-  isEditing: boolean
-  isRecurringParent: boolean
-  isRecurringInstance: boolean
-  editMode: 'single' | 'all'
-  setEditMode: (value: 'single' | 'all') => void
-  
-  assignableFamilyMembers: any[]
-  driverHelperFamilyMembers: any[]
-  
-  getDisplayName: (member: any) => string
-  getDayLetter: (day: string) => string
-  getSelectedDaysSummary: () => string
+  onClose: () => void
+  familyOptions: { id: string; name: string }[]
 }
 
 export function EventModalUI({
-  isOpen,
-  onClose,
+  title,
+  description,
+  startDate,
+  startTime,
+  endDate,
+  endTime,
+  allDay,
+  location,
+  assignedMembers,
+  driverHelper,
+  recurrenceType,
+  recurrenceInterval,
+  selectedDays,
+  recurrenceEndType,
+  recurrenceEndCount,
+  recurrenceEndDate,
+  onChangeField,
+  onToggleDay,
   onSave,
   onDelete,
-  loading,
-  error,
-  
-  title,
-  setTitle,
-  description,
-  setDescription,
-  
-  startDate,
-  setStartDate,
-  startTime,
-  setStartTime,
-  endDate,
-  setEndDate,
-  endTime,
-  setEndTime,
-  
-  allDay,
-  setAllDay,
-  
-  location,
-  setLocation,
-  
-  assignedMembers,
-  setAssignedMembers,
-  driverHelper,
-  setDriverHelper,
-  
-  showRecurringOptions,
-  toggleRecurringOptions,
-  recurrenceType,
-  setRecurrenceType,
-  recurrenceInterval,
-  setRecurrenceInterval,
-  recurrenceEndDate,
-  setRecurrenceEndDate,
-  recurrenceEndCount,
-  setRecurrenceEndCount,
-  recurrenceEndType,
-  setRecurrenceEndType,
-  selectedDays,
-  handleDayToggle,
-  
-  showAdditionalOptions,
-  toggleAdditionalOptions,
-  arrivalTime,
-  setArrivalTime,
-  driveTime,
-  setDriveTime,
-  
-  isEditing,
-  isRecurringParent,
-  isRecurringInstance,
-  editMode,
-  setEditMode,
-  
-  assignableFamilyMembers,
-  driverHelperFamilyMembers,
-  
-  getDisplayName,
-  getDayLetter,
-  getSelectedDaysSummary
+  onClose,
+  familyOptions,
 }: EventModalUIProps) {
-  if (!isOpen) return null
+  // parse into Date objects
+  const startISO = `${startDate}T${startTime}`
+  const endISO   = `${endDate}T${endTime}`
+  const startDt  = parseISO(startISO)
+  const endDt    = parseISO(endISO)
 
-  console.log('🔧 EventModalUI render:', {
-    title,
-    startDate,
-    startTime,
-    endDate,
-    endTime,
-    isEditing
-  })
-
-  // Safely format dates to prevent "Invalid time value" errors
-  const formatSafeDate = (dateStr: string, timeStr: string) => {
-    try {
-      if (!dateStr || !timeStr) {
-        console.warn('Invalid date/time inputs:', { dateStr, timeStr })
-        return 'Invalid date'
-      }
-      
-      const dateTimeStr = `${dateStr}T${timeStr}`
-      const date = new Date(dateTimeStr)
-      
-      if (!isValid(date)) {
-        console.warn('Invalid date detected:', { dateStr, timeStr, dateTimeStr })
-        return 'Invalid date'
-      }
-      
-      return format(date, 'PPpp')
-    } catch (error) {
-      console.error('Error formatting date:', error, { dateStr, timeStr })
-      return 'Invalid date'
-    }
-  }
-
-  const startDateFormatted = formatSafeDate(startDate, startTime)
-  const endDateFormatted = formatSafeDate(endDate, endTime)
+  const weekdays = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday']
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {isEditing ? 'Edit Event' : 'Create Event'}
-          </h2>
+    <div className="modal-backdrop">
+      <div className="modal p-6 space-y-4">
+        <h2 className="text-xl font-semibold">{title || 'New event'}</h2>
+
+        <Input
+          label="Title"
+          value={title}
+          onChange={e => onChangeField('title', e.target.value)}
+        />
+
+        <Textarea
+          label="Description"
+          value={description}
+          onChange={e => onChangeField('description', e.target.value)}
+        />
+
+        <div className="flex space-x-2">
+          <Input
+            type="date"
+            label="Start date"
+            value={startDate}
+            onChange={e => onChangeField('startDate', e.target.value)}
+          />
+          <Input
+            type="time"
+            label="Start time"
+            value={startTime}
+            onChange={e => onChangeField('startTime', e.target.value)}
+            disabled={allDay}
+          />
         </div>
-        
-        <div className="p-6 space-y-4">
-          {/* Basic Event Details */}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Title *
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                placeholder="Enter event title"
+
+        <div className="flex space-x-2">
+          <Input
+            type="date"
+            label="End date"
+            value={endDate}
+            onChange={e => onChangeField('endDate', e.target.value)}
+          />
+          <Input
+            type="time"
+            label="End time"
+            value={endTime}
+            onChange={e => onChangeField('endTime', e.target.value)}
+            disabled={allDay}
+          />
+        </div>
+
+        <Checkbox
+          label="All day"
+          checked={allDay}
+          onChange={e => onChangeField('allDay', e.target.checked)}
+        />
+
+        <Input
+          label="Location"
+          value={location}
+          onChange={e => onChangeField('location', e.target.value)}
+        />
+
+        <h3 className="font-medium">Assignments</h3>
+        <div className="grid grid-cols-2 gap-2">
+          {familyOptions.map(m => (
+            <Checkbox
+              key={m.id}
+              label={m.name}
+              checked={assignedMembers.includes(m.id)}
+              onChange={e => {
+                const next = e.target.checked
+                  ? [...assignedMembers, m.id]
+                  : assignedMembers.filter(x => x !== m.id)
+                onChangeField('assignedMembers', next)
+              }}
+            />
+          ))}
+        </div>
+
+        <h3 className="font-medium mt-4">Driver/Helper</h3>
+        <Select
+          label="Driver/Helper"
+          value={driverHelper}
+          onChange={e => onChangeField('driverHelper', e.target.value)}
+        >
+          <option value="">(none)</option>
+          {familyOptions.map(m => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </Select>
+
+        <h3 className="font-medium mt-4">Recurrence</h3>
+        <div className="space-y-2">
+          <Select
+            label="Repeats"
+            value={recurrenceType}
+            onChange={e => onChangeField('recurrenceType', e.target.value)}
+          >
+            <option value="none">Never</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+            <option value="yearly">Yearly</option>
+          </Select>
+
+          {recurrenceType !== 'none' && (
+            <>
+              <Input
+                type="number"
+                label="Every"
+                value={recurrenceInterval.toString()}
+                onChange={e =>
+                  onChangeField('recurrenceInterval', parseInt(e.target.value) || 1)
+                }
+                min={1}
               />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date *
-                </label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date *
-                </label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Time *
-                </label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  disabled={allDay}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Time *
-                </label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  disabled={allDay}
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={allDay}
-                  onChange={(e) => setAllDay(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="ml-2 text-sm text-gray-700">All day event</span>
-              </label>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Location
-              </label>
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                placeholder="Enter location (optional)"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                rows={3}
-                placeholder="Enter description (optional)"
-              />
-            </div>
-          </div>
-          
-          {/* Assigned Family Members */}
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">
-              Assign Family Members
-            </h3>
-            
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {assignableFamilyMembers.length === 0 ? (
-                  <p className="text-sm text-gray-500">No family members available</p>
+              {recurrenceType === 'weekly' && (
+                <div className="flex space-x-1">
+                  {weekdays.map(day => (
+                    <button
+                      key={day}
+                      type="button"
+                      className={`px-2 py-1 rounded ${
+                        selectedDays.includes(day)
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-200'
+                      }`}
+                      onClick={() => onToggleDay(day)}
+                    >
+                      {day.charAt(0).toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex space-x-2 items-center">
+                <label>Ends</label>
+                <select
+                  value={recurrenceEndType}
+                  onChange={e => onChangeField('recurrenceEndType', e.target.value)}
+                >
+                  <option value="count">After</option>
+                  <option value="date">On date</option>
+                </select>
+                {recurrenceEndType === 'count' ? (
+                  <Input
+                    type="number"
+                    value={recurrenceEndCount.toString()}
+                    onChange={e =>
+                      onChangeField('recurrenceEndCount', parseInt(e.target.value) || 1)
+                    }
+                    min={1}
+                  />
                 ) : (
-                  assignableFamilyMembers.map((member) => (
-                    <label key={member.id} className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={assignedMembers.includes(member.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setAssignedMembers([...assignedMembers, member.id])
-                          } else {
-                            setAssignedMembers(assignedMembers.filter(id => id !== member.id))
-                          }
-                        }}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <div className="ml-2 flex items-center">
-                        <div
-                          className="w-3 h-3 rounded-full mr-2"
-                          style={{ backgroundColor: member.color }}
-                        />
-                        <span className="text-sm text-gray-700">
-                          {getDisplayName(member)}
-                        </span>
-                      </div>
-                    </label>
-                  ))
+                  <Input
+                    type="date"
+                    value={recurrenceEndDate}
+                    onChange={e => onChangeField('recurrenceEndDate', e.target.value)}
+                  />
                 )}
               </div>
-            </div>
-          </div>
-          
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              {error}
-            </div>
+            </>
           )}
         </div>
-        
-        <div className="p-6 border-t border-gray-200 flex justify-between">
-          <div>
-            {isEditing && (
-              <Button
-                variant="danger"
-                onClick={onDelete}
-                disabled={loading}
-              >
-                Delete
-              </Button>
-            )}
-          </div>
-          
-          <div className="flex space-x-3">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              disabled={loading}
-            >
-              Cancel
-            </Button>
-            
-            <Button
-              onClick={onSave}
-              disabled={loading || !title.trim()}
-              loading={loading}
-            >
-              {isEditing ? 'Update' : 'Create'}
-            </Button>
-          </div>
+
+        <h3 className="font-medium mt-4">Preview</h3>
+        <p>
+          {isValid(startDt) ? format(startDt, 'PPpp') : '--'}
+          {' – '}
+          {isValid(endDt) ? format(endDt, 'PPpp') : '--'}
+        </p>
+
+        <div className="flex justify-end space-x-2 mt-6">
+          <Button onClick={onSave}>Save</Button>
+          <Button variant="outline" onClick={onDelete}>
+            Delete
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
         </div>
       </div>
     </div>
