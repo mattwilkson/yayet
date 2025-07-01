@@ -276,13 +276,6 @@ export const EventModal = ({
           interval: recurrenceInterval
         }
         
-console.log('🔍 Event Modal Debug:', {
-  event: event,
-  isEditing: !!event.id,
-  isRecurringParent: !!event.is_recurring_parent,
-  isRecurringInstance: !!event.parent_event_id,
-  shouldShowRecurring: !event.parent_event_id
-});
         
         // Add selected days for weekly recurrence
         if (recurrenceType === 'weekly' && selectedDays.length > 0) {
