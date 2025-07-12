@@ -13,7 +13,7 @@ interface SpecialEvent {
   created_by_user_id: string
   created_at: string
   updated_at: string
-  isSpecialEvent: true
+  isSpecialEvent: boolean
   specialEventType: 'birthday' | 'anniversary'
   familyMemberId: string
   familyMemberName: string
@@ -118,7 +118,7 @@ export async function generateSpecialEvents(
                 created_by_user_id: 'system',
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-                isSpecialEvent: true,
+                isSpecialEvent: true as true,
                 specialEventType: 'birthday',
                 familyMemberId: member.id,
                 familyMemberName: displayName,
@@ -169,7 +169,7 @@ export async function generateSpecialEvents(
                 created_by_user_id: 'system',
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-                isSpecialEvent: true,
+                isSpecialEvent: true as true,
                 specialEventType: 'anniversary',
                 familyMemberId: member.id,
                 familyMemberName: displayName,

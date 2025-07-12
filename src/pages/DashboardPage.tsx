@@ -36,6 +36,16 @@ export default function DashboardPage() {
   const fetchData = async () => {
     setLoading(true)
     try {
+      // Fetch special events (birthdays, anniversaries)
+      const startDate = new Date(currentDate);
+      startDate.setMonth(startDate.getMonth() - 1); // Include previous month
+      const endDate = new Date(currentDate);
+      endDate.setMonth(endDate.getMonth() + 2); // Include next two months
+      
+      // Import the generateSpecialEvents function dynamically
+      const { generateSpecialEvents } = await import('../lib/specialEvents');
+      const specialEvents = await generateSpecialEvents(userProfile.family_id!, startDate, endDate);
+      
       const data = await fetchOptimizedDashboardData(
         userProfile.family_id!,
         currentDate,
@@ -43,7 +53,8 @@ export default function DashboardPage() {
         profile.id
       )
       setFamilyInfo(data.familyInfo)
-      setEvents(data.events)
+      // Combine regular events with special events
+      setEvents([...data.events, ...specialEvents])
       setFamilyMembers(data.familyMembers)
     } catch (e) {
       console.error('Error fetching dashboard data:', e)

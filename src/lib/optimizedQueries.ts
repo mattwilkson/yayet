@@ -128,16 +128,13 @@ async function fetchOptimizedFamilyMembers(familyId: string) {
 // Holidays & special events (stubbed to allow dynamic import in the future)
 // ————————————————————————————————————————
 async function fetchOptimizedHolidays(start: Date, end: Date) {
-  // You can import/implement your actual logic here:
-  // const { fetchHolidays, convertHolidaysToEvents } = await import('./holidays')
-  // const raw = await fetchHolidays(start, end)
-  // return convertHolidaysToEvents(raw)
-  return []
+  const { fetchHolidays, convertHolidaysToEvents } = await import('./holidays')
+  const raw = await fetchHolidays(start, end)
+  return convertHolidaysToEvents(raw)
 }
 async function fetchOptimizedSpecialEvents(familyId: string, start: Date, end: Date) {
-  // const { generateSpecialEvents } = await import('./specialEvents')
-  // return generateSpecialEvents(familyId, start, end)
-  return []
+  const { generateSpecialEvents } = await import('./specialEvents')
+  return generateSpecialEvents(familyId, start, end)
 }
 
 // ————————————————————————————————————————
