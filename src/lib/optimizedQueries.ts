@@ -180,7 +180,15 @@ export async function fetchOptimizedEvents(
   }
 
   // Batch fetch assignments
-  const parentIds = Array.from(new Set(events.map(e => extractParentEventId(e.id))))
+  // Filter out holidays and special events before querying assignments
+  const eventsWithAssignments = events.filter(e => !e.isHoliday && !e.isSpecialEvent)
+  const parentIds = Array.from(new Set(eventsWithAssignments.map(e => extractParentEventId(e.id))))
+  
+  if (parentIds.length === 0) {
+    timer.end()
+    return events.map(e => ({ ...e, event_assignments: [], color: '#888' }))
+  }
+  
   const { data: assigns = [], error: ae } = await supabase
     .from('event_assignments')
     .select('event_id,is_driver_helper,family_member_id,family_members(id,color)')
@@ -195,6 +203,11 @@ export async function fetchOptimizedEvents(
   })
 
   const out = events.map(e => {
+    // Skip assignment lookup for holidays and special events
+    if (e.isHoliday || e.isSpecialEvent) {
+      return { ...e, event_assignments: [], color: e.color || '#888' }
+    }
+    
     const pid = extractParentEventId(e.id)
     const evAs = groups[pid] || []
     const primary = evAs.find(a => !a.is_driver_helper)?.family_members
